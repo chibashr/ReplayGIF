@@ -295,7 +295,7 @@ public class IsometricRenderer {
             double h = e.boundingHeight;
             int spriteW = (int) Math.round(w * tileWidth);
             int spriteH = (int) Math.round(h * tileHeight * 2);
-            if (spriteW < 1) spriteW = 1;
+            if (spriteW < 1) spriteW = 1;  // SnapshotScheduler clamps to 1e-6; ensure pixel dimensions are at least 1 to avoid invalid draw
             if (spriteH < 1) spriteH = 1;
 
             BufferedImage sprite = null;

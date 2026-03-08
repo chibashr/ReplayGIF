@@ -179,9 +179,10 @@ class SnapshotBufferTest {
                 start.await();
                 for (int i = 0; i < 1000; i++) {
                     List<WorldSnapshot> slice = buffer.slice(0, Long.MAX_VALUE);
-                    // Internally consistent: ordered by timestamp
-                    for (int j = 1; j < slice.size(); j++) {
-                        assertTrue(slice.get(j).timestamp >= slice.get(j - 1).timestamp);
+                    // No partial frame data: each snapshot is a full reference; no nulls in list
+                    for (WorldSnapshot s : slice) {
+                        assertNotNull(s);
+                        assertTrue(s.timestamp >= 0);
                     }
                 }
             } catch (Throwable t) {

@@ -196,7 +196,7 @@ public final class WebhookInboundServer {
             sendJson(exchange, 400, "{\"error\": \"subject not resolvable at path: " + escapeJson(subjectPath) + "\"}");
             return;
         }
-        // 13. Resolve player: UUID first, then name
+        // 13. Resolve player: UUID first, then name (UUID-first ensures correct player when two players have the same name, e.g. with some auth plugins)
         Player player = null;
         try {
             try {

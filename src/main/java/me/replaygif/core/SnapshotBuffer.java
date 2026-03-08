@@ -35,7 +35,7 @@ public class SnapshotBuffer {
      * Appends one frame; when full the oldest is overwritten so we always keep the latest window.
      * Main-thread only; no-op when paused so spectator-time window does not keep growing.
      */
-    public void write(WorldSnapshot snapshot) {
+    public synchronized void write(WorldSnapshot snapshot) {
         if (paused) {
             return;
         }
@@ -49,8 +49,9 @@ public class SnapshotBuffer {
     /**
      * Time-window slice for the render pipeline; oldest-first order matches replay chronology.
      * Returns a copy so async readers never observe the ring being overwritten during iteration.
+     * Synchronized with write() so readers see a consistent snapshot.
      */
-    public List<WorldSnapshot> slice(long fromTimestamp, long toTimestamp) {
+    public synchronized List<WorldSnapshot> slice(long fromTimestamp, long toTimestamp) {
         int c = count;
         int h = head;
         int cap = ring.length;

@@ -53,7 +53,7 @@ public class FilesystemOutput implements OutputTarget {
             }
             Files.write(resolvedPath, gifBytes);
         } catch (IOException e) {
-            logger.error("[{}] FilesystemOutput failed to write file: {}", context.jobId, e.getMessage());
+            logger.error("[{}] FilesystemOutput failed to write file: {}", context.jobId, e.getMessage()); // e.g. read-only data dir or permission denied
         }
     }
 }

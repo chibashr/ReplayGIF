@@ -49,6 +49,7 @@ public class GenericWebhookOutput implements OutputTarget {
         String payloadJson = buildMetadataJson(context);
 
         try {
+            // Malformed URL throws MalformedURLException (IOException); caught below so no exception reaches console
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setDoOutput(true);
             conn.setRequestMethod("POST");

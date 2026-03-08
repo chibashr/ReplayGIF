@@ -73,7 +73,8 @@ public final class TriggerHandler {
 
     /**
      * Enqueues a render job and returns immediately. No buffer for subject is the only
-     * early exit (e.g. player never had a buffer or was never online during scheduler run).
+     * early exit (e.g. player never had a buffer, was never online during scheduler run,
+     * or reload cleared the map before the death event was processed — all handled without exception).
      *
      * @param context fully built context from API, event, death, webhook, or dynamic listener
      * @return context.jobId so caller can correlate logs
@@ -99,7 +100,7 @@ public final class TriggerHandler {
         UUID jobId = job.jobId;
 
         try {
-            // a. Wait postSeconds
+            // a. Wait postSeconds (postSeconds = 0 → no wait, render starts immediately)
             long sleepMs = (long) (context.postSeconds * 1000.0);
             if (sleepMs > 0) {
                 Thread.sleep(sleepMs);
@@ -161,7 +162,7 @@ public final class TriggerHandler {
 
             // g. Encode GIF
             int fps = configManager.getFps();
-            int frameDelayMs = fps > 0 ? 1000 / fps : 100;
+            int frameDelayMs = fps > 0 ? 1000 / fps : 100; // FPS 1 → 1000ms; FPS 20 → 50ms (config clamps 1–20)
             byte[] gifBytes = gifEncoder.encode(images, frameDelayMs);
 
             job.status = RenderJob.Status.DISPATCHING;

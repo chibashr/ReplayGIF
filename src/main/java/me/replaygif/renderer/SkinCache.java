@@ -65,7 +65,7 @@ public class SkinCache {
         }
         PlayerTextures textures = player.getPlayerProfile().getTextures();
         if (textures == null || textures.isEmpty()) {
-            return;
+            return; // Private/hidden skin profile: Mojang returns no textures; we skip fetch and use placeholder in getFace()
         }
         try {
             java.net.URL skinUrl = textures.getSkin();
@@ -76,7 +76,7 @@ public class SkinCache {
             UUID uuid = player.getUniqueId();
             executor.submit(() -> fetchAndCache(uuid, uri));
         } catch (URISyntaxException | RuntimeException e) {
-            plugin.getSLF4JLogger().debug("Could not get skin URL for {}", player.getName(), e);
+            plugin.getSLF4JLogger().debug("Could not get skin URL for {}", player.getName(), e); // Offline mode or invalid UUID: session server may reject; getFace() returns empty → placeholder used
         }
     }
 

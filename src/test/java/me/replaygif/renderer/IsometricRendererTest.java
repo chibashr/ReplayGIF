@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -47,20 +48,34 @@ class IsometricRendererTest {
 
     private EntitySpriteRegistry createEntitySpriteRegistry() throws IOException {
         JavaPlugin plugin = mock(JavaPlugin.class);
+        when(plugin.getSLF4JLogger()).thenReturn(LoggerFactory.getLogger(IsometricRendererTest.class));
         when(plugin.getResource(anyString())).thenAnswer(inv -> {
-            String path = inv.getArgument(0);
-            var url = IsometricRendererTest.class.getResource("/" + path);
-            return url != null ? url.openStream() : null;
+            try {
+                if (inv == null) return null;
+                String path = inv.getArgument(0);
+                if (path == null) return null;
+                var url = IsometricRendererTest.class.getResource("/" + path);
+                return url != null ? url.openStream() : null;
+            } catch (Exception e) {
+                return null;
+            }
         });
         return new EntitySpriteRegistry(plugin, "");
     }
 
     private SkinCache createSkinCache() {
         JavaPlugin plugin = mock(JavaPlugin.class);
+        when(plugin.getSLF4JLogger()).thenReturn(LoggerFactory.getLogger(IsometricRendererTest.class));
         when(plugin.getResource(anyString())).thenAnswer(inv -> {
-            String path = inv.getArgument(0);
-            var url = IsometricRendererTest.class.getResource("/" + path);
-            return url != null ? url.openStream() : null;
+            try {
+                if (inv == null) return null;
+                String path = inv.getArgument(0);
+                if (path == null) return null;
+                var url = IsometricRendererTest.class.getResource("/" + path);
+                return url != null ? url.openStream() : null;
+            } catch (Exception e) {
+                return null;
+            }
         });
         return new SkinCache(plugin, true, 3600);
     }

@@ -259,6 +259,10 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
     /**
      * Reload config, clear all buffers (then re-create for online players),
      * restart SnapshotScheduler, and restart HttpServer only if port or enabled changed.
+     * Edge case: if a player dies on the same tick as reload, the death event runs after
+     * this method returns; buffers have already been repopulated by UUID, so the trigger
+     * finds their buffer (possibly empty). TriggerHandler.handle() also tolerates no buffer
+     * (logs WARN and returns) so no exception reaches the console.
      */
     public void reload() {
         configManager.load();

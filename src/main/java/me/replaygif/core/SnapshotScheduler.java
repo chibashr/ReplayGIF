@@ -240,7 +240,7 @@ public class SnapshotScheduler extends BukkitRunnable {
             double wX = bbox.getWidthX();
             double wZ = bbox.getWidthZ();
             double h = bbox.getHeight();
-            double boundingWidth = Math.max(Math.max(wX, wZ), 1e-6);
+            double boundingWidth = Math.max(Math.max(wX, wZ), 1e-6);  // Guard: entity with 0-size bbox would cause div-by-zero in renderer
             double boundingHeight = Math.max(h, 1e-6);
 
             result.add(new EntitySnapshot(

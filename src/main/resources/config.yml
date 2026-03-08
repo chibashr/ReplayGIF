@@ -3,10 +3,11 @@
 
 # Rolling buffer: how many seconds of world state to keep per online player.
 # Capacity = buffer_seconds * fps. Snapshots are ephemeral — lost on reload or shutdown.
+# At FPS 20 and buffer_seconds 30, capacity = 600 frames per player; tune buffer_seconds if memory is a concern.
 buffer_seconds: 30
 
 # Capture rate: frames per second (1–20). Scheduler runs at this rate on the main thread.
-# Higher FPS = smoother GIFs but more CPU and memory.
+# Higher FPS = smoother GIFs but more CPU and memory. FPS 1 gives one frame per second (min); FPS 20 is max.
 fps: 10
 
 # Spectator mode: seconds of frames to capture after player enters spectator (-1 = always, 0 = never).

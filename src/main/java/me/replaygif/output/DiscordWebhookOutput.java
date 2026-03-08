@@ -46,6 +46,7 @@ public class DiscordWebhookOutput implements OutputTarget {
         String payloadJson = buildEmbedJson(context);
 
         try {
+            // Malformed URL (e.g. typo in config) throws MalformedURLException, which is an IOException — caught below so no exception reaches console
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setDoOutput(true);
             conn.setRequestMethod("POST");
@@ -60,7 +61,7 @@ public class DiscordWebhookOutput implements OutputTarget {
                 logger.error("[{}] DiscordWebhookOutput received non-2xx response: {}", context.jobId, code);
             }
         } catch (IOException e) {
-            logger.error("[{}] DiscordWebhookOutput failed: {}", context.jobId, e.getMessage());
+            logger.error("[{}] DiscordWebhookOutput failed: {}", context.jobId, e.getMessage()); // includes malformed URL, connection refused, etc.
         }
     }
 

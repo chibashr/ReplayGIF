@@ -160,6 +160,30 @@ class TriggerHandlerTest {
         verify(mockTarget, times(2)).dispatch(any(TriggerContext.class), any(byte[].class));
     }
 
+    /** TH6 — Output profile not found: trigger references "nonexistent"; ERROR logged, no crash, plugin continues. */
+    @Test
+    void th6_outputProfileNotFound_errorLoggedNoCrash() throws InterruptedException {
+        UUID subjectUUID = UUID.randomUUID();
+        SnapshotBuffer buffer = new SnapshotBuffer(50);
+        long base = System.currentTimeMillis() - 5000;
+        for (int i = 0; i < 10; i++) {
+            buffer.write(snapshotAt(base + i * 100L));
+        }
+        buffers.put(subjectUUID, buffer);
+
+        when(mockRegistry.getProfile("default")).thenReturn(List.of(mockTarget));
+        when(mockRegistry.getProfile("nonexistent")).thenReturn(List.of());
+
+        TriggerContext context = buildContext(subjectUUID, "P", base + 500L, 1.0, 0.02, List.of("nonexistent"));
+        UUID jobId = handler.handle(context);
+
+        assertNotNull(jobId);
+        waitForJobDone(jobId, 5000);
+
+        verify(mockTarget, never()).dispatch(any(), any());
+        verify(mockGifEncoder, atLeast(1)).encode(anyList(), anyInt());
+    }
+
     /** TH4 — No buffer on trigger: WARN logged, no crash, returns jobId without submitting. */
     @Test
     void th4_noBuffer_triggerIgnoredNoCrash() {

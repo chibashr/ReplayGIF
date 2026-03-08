@@ -64,12 +64,20 @@ public class BlockColorMap {
         File blockColorsFile = new File(dataFolder, blockColorsFileName);
         if (!blockColorsFile.exists()) {
             dataFolder.mkdirs();
-            generateBlockColorsFile(blockColorsFile, blockRegistry, defaults);
-            if (logger != null) {
-                logger.info("Generated block_colors.json from BlockRegistry and defaults.");
+            try {
+                generateBlockColorsFile(blockColorsFile, blockRegistry, defaults);
+                if (logger != null) {
+                    logger.info("Generated block_colors.json from BlockRegistry and defaults.");
+                }
+            } catch (IOException e) {
+                if (logger != null) {
+                    logger.warn("Could not write block_colors.json (e.g. read-only plugin directory): {}. Using defaults only.", e.getMessage());
+                }
             }
         }
-        Map<String, String> runtime = loadJsonFile(blockColorsFile);
+        Map<String, String> runtime = blockColorsFile.exists()
+                ? loadJsonFile(blockColorsFile)
+                : buildMergedDefaults(blockRegistry, defaults);
         this.baseColorByOrdinal = new Color[ordinalCount];
         this.emissiveByOrdinal = new boolean[ordinalCount];
         for (int i = 0; i < ordinalCount; i++) {
@@ -100,13 +108,18 @@ public class BlockColorMap {
         }
     }
 
-    private static void generateBlockColorsFile(File target, BlockRegistry blockRegistry,
-                                                Map<String, String> defaults) throws IOException {
+    private static Map<String, String> buildMergedDefaults(BlockRegistry blockRegistry, Map<String, String> defaults) {
         Map<String, String> merged = new TreeMap<>();
         for (int i = 0; i < blockRegistry.getOrdinalCount(); i++) {
             Material m = blockRegistry.getMaterial((short) i);
             merged.put(m.name(), defaults.getOrDefault(m.name(), DEFAULT_GRAY));
         }
+        return merged;
+    }
+
+    private static void generateBlockColorsFile(File target, BlockRegistry blockRegistry,
+                                                Map<String, String> defaults) throws IOException {
+        Map<String, String> merged = buildMergedDefaults(blockRegistry, defaults);
         String json = new Gson().newBuilder().setPrettyPrinting().create().toJson(merged);
         target.getParentFile().mkdirs();
         Files.writeString(target.toPath(), json, StandardCharsets.UTF_8);

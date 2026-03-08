@@ -44,7 +44,11 @@ public class ConfigManager {
     private void saveDefaultIfMissing(String name) {
         File file = new File(plugin.getDataFolder(), name);
         if (!file.exists()) {
-            plugin.saveResource(name, false);
+            try {
+                plugin.saveResource(name, false);
+            } catch (Exception e) {
+                logger.warn("Could not save default {} (e.g. read-only plugin directory): {}", name, e.getMessage());
+            }
         }
     }
 

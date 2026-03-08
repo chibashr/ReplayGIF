@@ -9,6 +9,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.slf4j.Logger;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -120,6 +122,19 @@ public class OutputProfileRegistry {
             case "filesystem": {
                 if (pathTemplate == null || pathTemplate.isBlank()) {
                     logger.warn("Output profile '{}' entry {} (filesystem) has no 'path_template'; skipping.", profileName, index);
+                    return null;
+                }
+                try {
+                    Path candidate = Paths.get(pathTemplate).normalize();
+                    if (candidate.isAbsolute()) {
+                        Path base = pluginDataFolder.getAbsoluteFile().toPath().normalize();
+                        if (!candidate.startsWith(base)) {
+                            logger.error("Output profile '{}' entry {} (filesystem): path_template '{}' is outside plugin directory. Rejecting.", profileName, index, pathTemplate);
+                            return null;
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Output profile '{}' entry {} (filesystem): invalid path_template '{}': {}", profileName, index, pathTemplate, e.getMessage());
                     return null;
                 }
                 return new FilesystemOutput(pathTemplate, pluginDataFolder, logger);
