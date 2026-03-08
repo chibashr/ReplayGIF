@@ -41,7 +41,7 @@ class IsometricRendererTest {
         blockRegistry = new BlockRegistry();
         File dataFolder = tempDir.toFile();
         InputStream defaults = getClass().getResourceAsStream("/block_colors_defaults.json");
-        blockColorMap = new BlockColorMap(dataFolder, "block_colors.json", blockRegistry, defaults);
+        blockColorMap = new BlockColorMap(dataFolder, "block_colors.json", blockRegistry, defaults, null);
         renderer = new IsometricRenderer(32, 16, 8, 4, blockColorMap, blockRegistry);
     }
 

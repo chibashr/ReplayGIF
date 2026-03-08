@@ -12,9 +12,9 @@ import org.slf4j.Logger;
 import java.util.UUID;
 
 /**
- * Listens for ReplayGifTriggerEvent at MONITOR priority. Respects allow_api_triggers
- * config; validates subject is online; resolves defaults from triggers.yml → api;
- * builds TriggerContext and hands to TriggerHandler.
+ * Bridges the soft-dependency event into the same pipeline as the hard-dependency API.
+ * MONITOR priority ensures all other logic has run before we consume the event; we do not
+ * cancel it. allow_api_triggers gates the feature so server owners can disable external triggers.
  */
 public final class ApiTriggerListener implements Listener {
 
@@ -22,12 +22,18 @@ public final class ApiTriggerListener implements Listener {
     private final ConfigManager configManager;
     private final Logger logger;
 
+    /**
+     * @param triggerHandler receives the built context
+     * @param configManager  for allow_api_triggers and api defaults
+     * @param logger         for offline-player warnings
+     */
     public ApiTriggerListener(TriggerHandler triggerHandler, ConfigManager configManager, Logger logger) {
         this.triggerHandler = triggerHandler;
         this.configManager = configManager;
         this.logger = logger;
     }
 
+    /** Fires when another plugin calls PluginManager#callEvent(ReplayGifTriggerEvent). */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onReplayGifTrigger(ReplayGifTriggerEvent event) {
         if (!configManager.getAllowApiTriggers()) {

@@ -28,8 +28,10 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 /**
- * Embedded HttpServer for inbound POST /trigger. Binds only if webhook_server.enabled is true.
- * Validation and response codes per trigger-resolution.md section 2.
+ * Lightweight HTTP server for external triggers (e.g. external service POSTs with player UUID and
+ * event_key). Only started when webhook_server.enabled is true; secret header prevents unauthorized
+ * use. JSON body drives subject path, pre/post, profiles, and metadata so one endpoint serves many
+ * integrations without code changes.
  */
 public final class WebhookInboundServer {
 
@@ -44,6 +46,12 @@ public final class WebhookInboundServer {
     private final Logger logger;
     private HttpServer server;
 
+    /**
+     * @param configManager       webhook_server enabled/port/secret and inbound defaults
+     * @param triggerRuleRegistry matchInbound(event_key) for rule-based pre/post/profiles
+     * @param triggerHandler      receives the built context after 202 response
+     * @param logger              for bind errors and request validation
+     */
     public WebhookInboundServer(ConfigManager configManager,
                                 TriggerRuleRegistry triggerRuleRegistry,
                                 TriggerHandler triggerHandler,
@@ -55,11 +63,12 @@ public final class WebhookInboundServer {
     }
 
     /**
-     * Starts the HTTP server if webhook_server.enabled is true. No-op otherwise.
-     * If port is in use, logs at ERROR and does not crash.
+     * Binds to the configured port and installs /trigger handler. No-op if disabled; on bind
+     * failure we log and leave server null so the plugin can still run without webhook.
      */
     public void start() {
         if (!configManager.getWebhookServerEnabled()) {
+            logger.info("Inbound webhook server disabled (webhook_server.enabled=false).");
             return;
         }
         int port = configManager.getWebhookServerPort();
@@ -74,14 +83,12 @@ public final class WebhookInboundServer {
         }
     }
 
-    /** Returns the bound port, or -1 if not started. */
+    /** Port the server is listening on; -1 if not started (e.g. disabled or bind failed). */
     public int getPort() {
         return server != null && server.getAddress() != null ? server.getAddress().getPort() : -1;
     }
 
-    /**
-     * Stops the server. No-op if not started or already stopped.
-     */
+    /** Stops the server and clears reference; safe to call if never started. */
     public void stop() {
         if (server != null) {
             server.stop(0);
@@ -192,13 +199,17 @@ public final class WebhookInboundServer {
         // 13. Resolve player: UUID first, then name
         Player player = null;
         try {
-            UUID uuid = UUID.fromString(subjectValue);
-            player = Bukkit.getPlayer(uuid);
-        } catch (IllegalArgumentException ignored) {
-            // not a valid UUID
-        }
-        if (player == null) {
-            player = Bukkit.getPlayerExact(subjectValue);
+            try {
+                UUID uuid = UUID.fromString(subjectValue);
+                player = Bukkit.getPlayer(uuid);
+            } catch (IllegalArgumentException ignored) {
+                // not a valid UUID
+            }
+            if (player == null) {
+                player = Bukkit.getPlayerExact(subjectValue);
+            }
+        } catch (Exception e) {
+            logger.debug("Inbound webhook: player lookup failed for {}: {}", subjectValue, e.getMessage());
         }
         if (player == null || !player.isOnline()) {
             logger.warn("Inbound webhook: player not online: {}", subjectValue);

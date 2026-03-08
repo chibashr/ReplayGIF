@@ -61,6 +61,7 @@ public class ConfigManager {
         if (getWebhookServerEnabled() && "changeme".equals(getWebhookServerSecret())) {
             logger.warn("webhook_server.enabled is true but webhook_server.secret is still 'changeme'. Change the secret in production.");
         }
+        logger.info("Config loaded and validated.");
     }
 
     private FileConfiguration loadFile(String name) {

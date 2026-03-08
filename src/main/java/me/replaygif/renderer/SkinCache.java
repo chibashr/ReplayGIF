@@ -21,10 +21,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * UUID → 8×8 face BufferedImage with TTL. On player join (if skin rendering
- * enabled): async HTTP GET to skin URL, parse 64×64 PNG, extract face region
- * (pixels 8–15 on both axes). getFace(UUID) returns Optional; fallback is
- * player_placeholder.png from resources.
+ * Caches player skin faces (8×8 region from the 64×64 skin texture) so the entity pass
+ * can draw player heads without blocking the main thread. Fetch is triggered on join and
+ * stored with TTL so we don't re-fetch every frame; getFace returns empty until the async
+ * load completes, then we use the placeholder so rendering never blocks on the network.
  */
 public class SkinCache {
 
@@ -47,16 +47,18 @@ public class SkinCache {
         return t;
     });
 
+    /**
+     * @param plugin     for logger and placeholder resource
+     * @param enabled    when false, onPlayerJoin and getFace do nothing / return empty
+     * @param ttlSeconds cache expiry so skins are refreshed after a while
+     */
     public SkinCache(JavaPlugin plugin, boolean enabled, int ttlSeconds) {
         this.plugin = plugin;
         this.enabled = enabled;
         this.ttlSeconds = ttlSeconds;
     }
 
-    /**
-     * Call when a player joins; if skin rendering is enabled, fetches skin URL
-     * and caches the face asynchronously.
-     */
+    /** Schedules an async fetch of the player's skin face; no-op if disabled or no skin URL. */
     public void onPlayerJoin(Player player) {
         if (!enabled) {
             return;
@@ -107,10 +109,7 @@ public class SkinCache {
         }
     }
 
-    /**
-     * Extracts the 8×8 face region (pixels 8–15 on both axes). Same region for
-     * classic and slim models.
-     */
+    /** Face region is 8–15 on both axes for both classic and slim skin layouts. */
     private static BufferedImage extractFace(BufferedImage skin) {
         int w = skin.getWidth();
         int h = skin.getHeight();
@@ -120,9 +119,7 @@ public class SkinCache {
         return skin.getSubimage(FACE_X, FACE_Y, FACE_SIZE, FACE_SIZE);
     }
 
-    /**
-     * Returns the cached 8×8 face image for the player, or empty if not cached.
-     */
+    /** Cached face or empty if not yet loaded or expired; renderer uses placeholder when empty. */
     public Optional<BufferedImage> getFace(UUID uuid) {
         CachedFace cached = cache.get(uuid);
         if (cached == null) {
@@ -135,9 +132,7 @@ public class SkinCache {
         return Optional.of(cached.face);
     }
 
-    /**
-     * Returns the bundled player placeholder image (used when skin not cached).
-     */
+    /** Fallback when getFace returns empty; lazy-loaded from resources. */
     public BufferedImage getPlaceholder() {
         if (placeholder == null) {
             synchronized (this) {
@@ -156,6 +151,11 @@ public class SkinCache {
             }
         }
         return placeholder;
+    }
+
+    /** Stops the fetch executor; call from plugin onDisable to avoid leaks. */
+    public void shutdown() {
+        executor.shutdownNow();
     }
 
     private record CachedFace(BufferedImage face, long expiresAt) {}

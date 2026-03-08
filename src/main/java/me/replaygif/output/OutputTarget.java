@@ -3,16 +3,19 @@ package me.replaygif.output;
 import me.replaygif.trigger.TriggerContext;
 
 /**
- * Interface for dispatching a rendered GIF to an output (webhook, filesystem, etc.).
+ * Contract for sending a finished GIF to a destination. Each output profile can list
+ * multiple targets; the pipeline calls dispatch on each. Runs on the render thread so
+ * implementations should not block long—log and return on failure instead of throwing,
+ * so one failing target does not abort others.
  */
 public interface OutputTarget {
 
     /**
-     * Dispatch the GIF bytes to this target. Called on the async render thread.
-     * Implementations must not throw; log failures and return.
+     * Sends the GIF to this target. Context is used for template resolution (paths, filenames,
+     * embed text) and for jobId in log messages.
      *
-     * @param context trigger context for template resolution and logging
-     * @param gifBytes the encoded GIF bytes
+     * @param context  trigger context; use for resolve() and context.jobId in logs
+     * @param gifBytes encoded GIF; may be empty but not null in practice
      */
     void dispatch(TriggerContext context, byte[] gifBytes);
 }

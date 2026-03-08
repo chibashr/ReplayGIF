@@ -40,7 +40,7 @@ class BlockColorMapTest {
             }
         }
         InputStream defaults = getClass().getResourceAsStream("/block_colors_defaults.json");
-        return new BlockColorMap(dir, "block_colors.json", blockRegistry, defaults);
+        return new BlockColorMap(dir, "block_colors.json", blockRegistry, defaults, null);
     }
 
     /** BC1 — No material returns null faces; unknown ordinals return gray fallback. */

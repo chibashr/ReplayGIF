@@ -17,8 +17,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Bukkit listener: PlayerDeathEvent only. Resolution per trigger-resolution.md section 1a.
- * MONITOR priority, ignoreCancelled = false.
+ * Dedicated listener for player death so we don't rely on reflection or event class names.
+ * MONITOR priority so we run after other plugins; we don't cancel the event. Rule comes from
+ * TriggerRuleRegistry.getPlayerDeathRule() so a single "player_death" rule drives pre/post and profiles.
  */
 public final class DeathListener implements Listener {
 
@@ -26,12 +27,18 @@ public final class DeathListener implements Listener {
     private final TriggerRuleRegistry ruleRegistry;
     private final Logger logger;
 
+    /**
+     * @param triggerHandler  receives the built context
+     * @param ruleRegistry    provides the player_death rule (pre, post, profiles, enabled)
+     * @param logger          for debug when rule missing or disabled
+     */
     public DeathListener(TriggerHandler triggerHandler, TriggerRuleRegistry ruleRegistry, Logger logger) {
         this.triggerHandler = triggerHandler;
         this.ruleRegistry = ruleRegistry;
         this.logger = logger;
     }
 
+    /** Fires when a player dies; builds context from entity and death message, then hands to TriggerHandler. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onPlayerDeath(PlayerDeathEvent event) {
         Optional<TriggerRule> ruleOpt = ruleRegistry.getPlayerDeathRule();
@@ -83,10 +90,7 @@ public final class DeathListener implements Listener {
         triggerHandler.handle(context);
     }
 
-    /**
-     * Null-safe death message extraction. Uses Adventure PlainTextComponentSerializer if
-     * event.deathMessage() returns a Component; fallback "{player} died" if null or suppressed.
-     */
+    /** Resolves death message for event label; fallback to "{player} died" so we always have a non-null label. */
     private String getDeathMessagePlainText(PlayerDeathEvent event, Player player) {
         try {
             Component msg = event.deathMessage();

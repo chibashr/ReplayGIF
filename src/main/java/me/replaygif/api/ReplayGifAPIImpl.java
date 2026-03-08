@@ -14,8 +14,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * ReplayGifAPI implementation. Validates inputs, applies defaults from
- * triggers.yml → api, builds TriggerContext, hands to TriggerHandler.
+ * Implementation of {@link ReplayGifAPI}. Kept in the API package so that the event-based
+ * flow can reuse {@link #buildContextFromApi} without duplicating default resolution;
+ * only validation and default application live here, not pipeline logic.
  */
 public final class ReplayGifAPIImpl implements ReplayGifAPI {
 
@@ -23,6 +24,11 @@ public final class ReplayGifAPIImpl implements ReplayGifAPI {
     private final ConfigManager configManager;
     private final Logger logger;
 
+    /**
+     * @param triggerHandler pipeline entry point; receives the built context
+     * @param configManager  source of api default pre/post seconds and default output profiles
+     * @param logger         for warning when subject is null or offline
+     */
     public ReplayGifAPIImpl(TriggerHandler triggerHandler, ConfigManager configManager, Logger logger) {
         this.triggerHandler = triggerHandler;
         this.configManager = configManager;
@@ -56,8 +62,18 @@ public final class ReplayGifAPIImpl implements ReplayGifAPI {
     }
 
     /**
-     * Builds TriggerContext from API/event inputs, applying defaults from triggers.yml → api.
-     * Used by both ReplayGifAPIImpl and the ReplayGifTriggerEvent listener.
+     * Shared builder for API and event flows so default resolution (pre/post seconds,
+     * output profiles, dimension/world names) is defined in one place and stays consistent.
+     *
+     * @param configManager  used for api default pre/post and default output profiles when caller passes -1 or null
+     * @param subject       player; used for UUID, name, location, dimension
+     * @param eventLabel    non-null label (empty allowed)
+     * @param preSeconds    &lt; 0 → config default, else used as-is
+     * @param postSeconds   &lt; 0 → config default, else used as-is
+     * @param outputProfileNames null or empty → config default list
+     * @param metadata      null → empty map
+     * @param jobId         job UUID for this trigger
+     * @return fully populated TriggerContext for TriggerHandler
      */
     public static TriggerContext buildContextFromApi(
             ConfigManager configManager,

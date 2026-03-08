@@ -21,8 +21,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Registers reflection-based listeners at runtime per trigger-resolution.md section 1b.
- * Excludes player_death; each other internal rule is registered via Class.forName and EventExecutor.
+ * Registers one EventExecutor per internal trigger rule (except player_death, which has its own
+ * DeathListener). Uses reflection so we can support any Bukkit event class by name without
+ * compiling against every event type. Subject and label are resolved via rule's getter chains
+ * and label path so one config drives many event types.
  */
 public final class DynamicListenerRegistry {
 
@@ -35,11 +37,19 @@ public final class DynamicListenerRegistry {
     private final Logger logger;
     private final Listener sharedListener = new Listener() {};
 
+    /** Convenience constructor using Bukkit.getPluginManager(). */
     public DynamicListenerRegistry(TriggerHandler triggerHandler, TriggerRuleRegistry ruleRegistry,
                                    Plugin plugin, Logger logger) {
         this(triggerHandler, ruleRegistry, plugin, Bukkit.getPluginManager(), logger);
     }
 
+    /**
+     * @param triggerHandler  receives built context when a registered event fires and rule matches
+     * @param ruleRegistry    source of internal rules (event class name, getters, conditions)
+     * @param plugin          registering plugin
+     * @param pluginManager   for registerEvent
+     * @param logger          for registration and resolution failures
+     */
     public DynamicListenerRegistry(TriggerHandler triggerHandler, TriggerRuleRegistry ruleRegistry,
                                    Plugin plugin, PluginManager pluginManager, Logger logger) {
         this.triggerHandler = triggerHandler;
@@ -50,8 +60,8 @@ public final class DynamicListenerRegistry {
     }
 
     /**
-     * Register dynamic listeners for all internal rules except player_death.
-     * Call once at startup on the main thread.
+     * Registers one listener per internal rule (skipping player_death). Call once on enable
+     * so all configured event types (e.g. EntityDamageByEntityEvent) are wired without code changes.
      */
     public void register() {
         for (TriggerRule rule : ruleRegistry.getInternalRules()) {
@@ -83,6 +93,12 @@ public final class DynamicListenerRegistry {
                 logger.warn("Dynamic listener: class not found: {}. Rule skipped.", rule.pattern);
             }
         }
+        logger.info("DynamicListenerRegistry: registration complete.");
+    }
+
+    /** No-op unregister; Bukkit/Paper unregisters by plugin. Exists for symmetric lifecycle logging. */
+    public void unregister() {
+        logger.info("Dynamic listeners unregistered.");
     }
 
     private void resolveAndHandle(Object event, TriggerRule rule) {

@@ -8,15 +8,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Material → short ordinal, built at startup. Iterates Material.values(),
- * filters to block materials only. AIR is always ordinal 0. Bidirectional
- * lookups; unknown materials return ordinal 0, unknown ordinals return AIR.
+ * Stable mapping from block materials to compact ordinals so snapshot storage uses shorts
+ * instead of material names. Built once at startup from Material.values() (blocks only);
+ * AIR is forced to ordinal 0 so the renderer can treat 0 as "empty" without special-casing.
+ * Unknown material → 0 and unknown ordinal → AIR keep the pipeline safe against future
+ * Minecraft materials or corrupted data.
  */
 public class BlockRegistry {
 
     private final Material[] ordinalToMaterial;
     private final Map<Material, Short> materialToOrdinal;
 
+    /** Builds the bidirectional map; call once during plugin enable. */
     public BlockRegistry() {
         List<Material> blocks = new ArrayList<>();
         for (Material m : Material.values()) {
@@ -39,12 +42,12 @@ public class BlockRegistry {
         }
     }
 
-    /** Returns the ordinal for the given material. Unknown materials return 0 (AIR). */
+    /** Ordinal for storage; unknown materials map to 0 so decoders see AIR. */
     public short getOrdinal(Material material) {
         return materialToOrdinal.getOrDefault(material, (short) 0);
     }
 
-    /** Returns the material for the given ordinal. Unknown ordinals return Material.AIR. */
+    /** Material for rendering; out-of-range ordinals return AIR to avoid NPE or invalid lookups. */
     public Material getMaterial(short ordinal) {
         if (ordinal < 0 || ordinal >= ordinalToMaterial.length) {
             return Material.AIR;
@@ -52,7 +55,7 @@ public class BlockRegistry {
         return ordinalToMaterial[ordinal];
     }
 
-    /** Returns the number of block materials (ordinals 0 to count-1). */
+    /** Size of the ordinal space; BlockColorMap and others use this to allocate arrays. */
     public int getOrdinalCount() {
         return ordinalToMaterial.length;
     }

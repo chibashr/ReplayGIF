@@ -3,49 +3,50 @@ package me.replaygif.core;
 import java.util.List;
 
 /**
- * Immutable. One captured frame of world state around a player.
- * Created by SnapshotScheduler on the main thread. Read by TriggerHandler
- * and IsometricRenderer on async threads. Must be fully immutable after
- * construction — no setters, no mutable collections.
+ * Immutable single frame: block volume + entities + player state at one moment.
+ * Built on the main thread, consumed on the render thread; immutability (no setters,
+ * defensively copied entities list) avoids cross-thread visibility issues and allows
+ * safe caching of derived data (e.g. draw lists) if needed later.
  */
 public final class WorldSnapshot {
 
-    /** Milliseconds since epoch at time of capture. Never null. */
+    /** Used for slice() time window and to find the trigger frame index. */
     public final long timestamp;
 
-    /** Absolute world coordinates of the player's block position at time of capture. */
+    /** World block coords of the player; volume is centered here and blocks are relative. */
     public final int originX;
     public final int originY;
     public final int originZ;
 
-    /** Player facing direction at time of capture, in degrees (Minecraft convention). */
+    /** Player look direction; available for overlays or future use. */
     public final float playerYaw;
     public final float playerPitch;
 
-    /** Player health at time of capture. Range 0.0–20.0. */
+    /** For death overlay: we show gravestone and tint when health is 0 after trigger frame. */
     public final float playerHealth;
 
-    /** Player food level at time of capture. Range 0–20. */
+    /** Captured for possible future HUD or metadata. */
     public final int playerFood;
 
-    /** The dimension key at time of capture. Never null. */
+    /** Dimension key for templates and logging. */
     public final String dimension;
 
-    /** The world name at time of capture. Never null. */
+    /** World name for templates and logging. */
     public final String worldName;
 
-    /** Flattened 3D array of block material ordinals. Size is volumeSize^3. Never null. */
+    /** Flattened volumeSize³ block ordinals; index = x*vol² + y*vol + z. */
     public final short[] blocks;
 
-    /** Edge length of the cubic volume. */
+    /** Cubic volume edge length; same for all snapshots in a run. */
     public final int volumeSize;
 
-    /** All entities within the capture volume at time of capture. Never null. Immutable list. */
+    /** Defensively copied so callers cannot mutate the frame's entity list. */
     public final List<EntitySnapshot> entities;
 
-    /** Whether the player was in spectator mode at time of capture. */
+    /** Whether the player was in spectator; can be used for UI or filtering. */
     public final boolean inSpectator;
 
+    /** All fields final; entities list is a copy so this frame is fully immutable. */
     public WorldSnapshot(
             long timestamp,
             int originX,

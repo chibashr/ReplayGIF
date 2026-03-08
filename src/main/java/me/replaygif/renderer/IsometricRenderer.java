@@ -22,8 +22,11 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Renders WorldSnapshot to BufferedImage using isometric projection.
- * Stages 1a–1h: block pass, entity pass, trigger frame marker, post-death overlay.
+ * Turns a list of WorldSnapshots into a list of BufferedImages (one per frame) using a fixed
+ * isometric projection. Block pass uses painter's algorithm (sort by relX+relZ+relY) and
+ * cut plane so only the "front" half of the volume is drawn; entities and overlays (trigger
+ * border, death tint, gravestone) are drawn on top. Dimensions are computed from volume
+ * and tile size so the pipeline does not depend on hardcoded resolution.
  */
 public class IsometricRenderer {
 
@@ -56,11 +59,16 @@ public class IsometricRenderer {
     private final EntitySpriteRegistry entitySpriteRegistry;
     private final SkinCache skinCache;
 
+    /** Block-only renderer when entity/skin registries are not available. */
     public IsometricRenderer(int volumeSize, int tileWidth, int tileHeight, int cutOffset,
                             BlockColorMap blockColorMap, BlockRegistry blockRegistry) {
         this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, null, null);
     }
 
+    /**
+     * Full renderer with optional entity and skin support. When entitySpriteRegistry and skinCache
+     * are null, entity pass and gravestone are skipped; trigger border and death overlay still apply if context is set.
+     */
     public IsometricRenderer(int volumeSize, int tileWidth, int tileHeight, int cutOffset,
                             BlockColorMap blockColorMap, BlockRegistry blockRegistry,
                             EntitySpriteRegistry entitySpriteRegistry, SkinCache skinCache) {
@@ -77,33 +85,33 @@ public class IsometricRenderer {
         this.imageHeight = dims[1];
     }
 
-    /** Context for entity pass, trigger marker, and post-death overlay. Null = block pass only. */
+    /** Carries trigger frame index and death/last-alive state so we draw border and overlay on the right frame. */
     public record RenderFrameContext(
             int triggerFrameIndex,
             String playerName,
             double lastAliveRelX, double lastAliveRelY, double lastAliveRelZ,
             boolean allFramesDead) {}
 
-    /**
-     * Image dimensions from rendering-pipeline.md 1a. Returns [width, height].
-     */
+    /** Derived from volume and tile size so GIF dimensions are consistent and config-driven. Returns [width, height]. */
     public int[] computeImageDimensions() {
         int w = (volumeSize + volumeSize) * (tileWidth / 2) + tileWidth;
         int h = (volumeSize + volumeSize) * (tileHeight / 2) + (volumeSize * tileHeight) + tileHeight;
         return new int[] { w, h };
     }
 
+    /** Width in pixels of each frame image. */
     public int getImageWidth() {
         return imageWidth;
     }
 
+    /** Height in pixels of each frame image. */
     public int getImageHeight() {
         return imageHeight;
     }
 
     /**
-     * Builds the block draw list: all non-air, non-culled blocks with sortKey = relX + relZ + relY,
-     * sorted ascending (painter's algorithm). See 1b and 1c.
+     * Collects visible blocks (non-air, not culled by cut plane), sorts by relX+relZ+relY so
+     * back-to-front draw order is correct for the isometric view.
      */
     public List<BlockDrawEntry> buildBlockDrawList(WorldSnapshot snapshot) {
         short[] blocks = snapshot.blocks;
@@ -133,14 +141,12 @@ public class IsometricRenderer {
         return list;
     }
 
-    /**
-     * Isometric projection: top-center of the block in pixel coordinates. See 1d.
-     */
+    /** Screen position of the top-center of a block at the given relative coords. */
     public Point project(int relX, int relY, int relZ) {
         return project((double) relX, (double) relY, (double) relZ);
     }
 
-    /** Projection for entity positions (double coordinates). */
+    /** Same as project(int) but for entity positions in double. */
     public Point project(double relX, double relY, double relZ) {
         int sx = imageWidth / 2 + (int) Math.round((relX - relZ) * (tileWidth / 2.0));
         int sy = imageHeight / 2 + (int) Math.round((relX + relZ) * (tileHeight / 2.0) - relY * tileHeight);
@@ -148,9 +154,8 @@ public class IsometricRenderer {
     }
 
     /**
-     * Draws all three faces for one block at (screenX, screenY). Handles transparent
-     * (alpha 128), liquid (hue shift by (frameIndex % 10) * 2 degrees), emissive
-     * (already in BlockColorMap). See 1e.
+     * Draws top/left/right faces for one block. Applies transparency for glass-like blocks,
+     * per-frame hue shift for liquids (shimmer), and uses BlockColorMap for emissive brightness.
      */
     public void drawBlock(Graphics2D g, int screenX, int screenY, short materialOrdinal, int frameIndex) {
         BlockFaceColors faces = blockColorMap.getFaces(materialOrdinal);
@@ -195,16 +200,14 @@ public class IsometricRenderer {
         g.fillPolygon(rightX, rightY, 4);
     }
 
-    /**
-     * Renders one frame (block pass only). Use {@link #renderFrame(WorldSnapshot, int, RenderFrameContext)} for entity pass and overlays.
-     */
+    /** Renders one frame without entities or overlays; context null means block (+ emissive) only. */
     public BufferedImage renderFrame(WorldSnapshot snapshot, int frameIndex) {
         return renderFrame(snapshot, frameIndex, null);
     }
 
     /**
-     * Renders one frame: block pass, then (if context and registries set) entity pass,
-     * trigger frame border, post-death overlay and gravestone.
+     * Full frame: blocks (with emissive glow), then entities (if context and registries set),
+     * then trigger border on the trigger frame index, then death overlay/gravestone when applicable.
      */
     public BufferedImage renderFrame(WorldSnapshot snapshot, int frameIndex, RenderFrameContext context) {
         BufferedImage image = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_ARGB);
@@ -419,7 +422,7 @@ public class IsometricRenderer {
         return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
     }
 
-    /** One block in the draw list: sortKey and position + material ordinal. */
+    /** Single block entry for the sorted draw list; sortKey = relX+relZ+relY for painter's order. */
     public record BlockDrawEntry(int sortKey, int relX, int relY, int relZ, short materialOrdinal) {}
 
     private record EmissiveGlow(int relX, int relY, int relZ, Color color) {}

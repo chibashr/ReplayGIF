@@ -21,9 +21,10 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Receives TriggerContext from any trigger source, validates buffer,
- * creates a RenderJob, and runs the render pipeline on the async thread pool.
- * Returns jobId immediately.
+ * Single entry point for all triggers (API, event, death, webhook, dynamic). Validates that
+ * a buffer exists for the subject, enqueues one async job per context, and returns so the
+ * caller (e.g. HTTP handler or event listener) is not blocked. The fixed thread pool size
+ * is configurable to limit concurrent render load while still processing multiple jobs.
  */
 public final class TriggerHandler {
 
@@ -36,6 +37,14 @@ public final class TriggerHandler {
     private final ExecutorService renderPool;
     private final Map<UUID, RenderJob> activeJobs = new ConcurrentHashMap<>();
 
+    /**
+     * @param buffers               shared player → buffer map; handler only reads and calls slice()
+     * @param renderer               turns WorldSnapshot list into BufferedImage list
+     * @param gifEncoder             turns image list into GIF bytes
+     * @param outputProfileRegistry  profile name → list of OutputTargets for dispatch
+     * @param configManager          fps for frame delay and async thread count
+     * @param logger                 for job lifecycle and failure messages
+     */
     public TriggerHandler(
             Map<UUID, SnapshotBuffer> buffers,
             IsometricRenderer renderer,
@@ -63,11 +72,11 @@ public final class TriggerHandler {
     }
 
     /**
-     * Handles a trigger. Validates buffer, creates job, submits async render task,
-     * and returns jobId immediately. If no buffer exists for the subject, logs WARN and returns without submitting.
+     * Enqueues a render job and returns immediately. No buffer for subject is the only
+     * early exit (e.g. player never had a buffer or was never online during scheduler run).
      *
-     * @param context trigger context from any source
-     * @return jobId for log correlation; never null
+     * @param context fully built context from API, event, death, webhook, or dynamic listener
+     * @return context.jobId so caller can correlate logs
      */
     public UUID handle(TriggerContext context) {
         UUID jobId = context.jobId;
@@ -190,13 +199,17 @@ public final class TriggerHandler {
         }
     }
 
-    /** Returns a snapshot of active jobs for status reporting. */
+    /** Copy of the active job map so admin/API can report status without holding the internal reference. */
     public Map<UUID, RenderJob> getActiveJobs() {
         return new ConcurrentHashMap<>(activeJobs);
     }
 
-    /** Shuts down the render pool. Does not wait for in-progress jobs. */
+    /** Stops accepting new work and interrupts running tasks; call from plugin onDisable. */
     public void shutdown() {
+        List<UUID> interrupted = new ArrayList<>(activeJobs.keySet());
         renderPool.shutdownNow();
+        if (!interrupted.isEmpty()) {
+            logger.info("Render pool shut down. Interrupted jobs: {}", interrupted);
+        }
     }
 }

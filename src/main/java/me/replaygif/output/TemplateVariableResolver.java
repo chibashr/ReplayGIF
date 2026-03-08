@@ -8,8 +8,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 /**
- * Resolves template variables in output embed templates and filesystem path templates.
- * Supports all variables from the template variable reference table.
+ * Single place for template substitution so embed text, filenames, and paths all use the
+ * same variable set and formatting. resolve() is for display text; resolveForPath() strips
+ * path-unsafe characters and ".." to avoid traversal when template comes from config or API.
  */
 public final class TemplateVariableResolver {
 
@@ -20,13 +21,12 @@ public final class TemplateVariableResolver {
     }
 
     /**
-     * Replaces all template variables in the given string using context.
-     * Variables: {player}, {uuid}, {event}, {x}, {y}, {z}, {dimension}, {world},
-     * {timestamp}, {date}, {time}, {job_id}, and {key} for any key in context.metadata.
+     * Replaces {player}, {uuid}, {event}, {x}, {y}, {z}, {dimension}, {world}, {timestamp},
+     * {date}, {time}, {job_id}, and any {key} from context.metadata. Use for embeds and filenames.
      *
-     * @param context  trigger context; never null
-     * @param template template string; null/empty returns as-is
-     * @return resolved string
+     * @param context  source of values; never null
+     * @param template string with placeholders; null/empty returned as-is
+     * @return substituted string
      */
     public static String resolve(TriggerContext context, String template) {
         if (template == null || template.isEmpty()) {
@@ -60,12 +60,12 @@ public final class TemplateVariableResolver {
     }
 
     /**
-     * Like {@link #resolve(TriggerContext, String)} but sanitizes substituted values
-     * for use in filesystem paths: removes ".." and replaces path separators with underscore.
+     * Same variables as resolve(), but substituted values are sanitized (no "..", path
+     * separators replaced with _) so the result is safe to use as a path segment under the plugin dir.
      *
-     * @param context  trigger context; never null
-     * @param template path template; null/empty returns as-is
-     * @return resolved path segment string safe for filesystem use
+     * @param context  source of values; never null
+     * @param template path template; null/empty returned as-is
+     * @return path-safe string
      */
     public static String resolveForPath(TriggerContext context, String template) {
         if (template == null || template.isEmpty()) {

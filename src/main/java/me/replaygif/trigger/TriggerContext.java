@@ -5,48 +5,50 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Immutable. Created when a trigger fires, passed through the entire
- * pipeline from TriggerHandler to OutputTarget. Never modified after
- * construction.
+ * Immutable bag of everything the pipeline needs from trigger time to output dispatch.
+ * Built once per trigger (API, event, death, webhook, dynamic listener); passed through
+ * slice → render → encode → dispatch so outputs can resolve templates and log by jobId
+ * without touching the trigger source. Builder enforces non-null profiles and copied
+ * collections so no downstream code can see a half-built or mutated context.
  */
 public final class TriggerContext {
 
-    /** UUID of the player whose buffer is being rendered. Never null. */
+    /** Identifies which SnapshotBuffer to slice. */
     public final UUID subjectUUID;
 
-    /** Display name of the player at trigger time. Never null. */
+    /** For templates ({player}) and logging. */
     public final String subjectName;
 
-    /** Human-readable label for the event that triggered the render. Never null. */
+    /** For templates ({event}) and embed titles. */
     public final String eventLabel;
 
-    /** Seconds of buffer before the trigger timestamp to include. Always >= 0.0. */
+    /** Slice start = triggerTimestamp - (preSeconds * 1000). */
     public final double preSeconds;
 
-    /** Seconds after the trigger timestamp to capture before rendering starts. Always >= 0.0. */
+    /** Wait this long after trigger before slicing, so post-moment is captured. */
     public final double postSeconds;
 
-    /** Names of output profiles to dispatch to. Never null. Never empty. */
+    /** Builder normalizes to at least "default" so dispatch always has a list. */
     public final List<String> outputProfileNames;
 
-    /** Freeform metadata for template variable resolution. May be empty. Never null. */
+    /** Copied at build so callers cannot mutate after handoff. */
     public final Map<String, String> metadata;
 
-    /** Milliseconds since epoch when the trigger fired. */
+    /** Used for slice window and for {timestamp} / {date} / {time} in templates. */
     public final long triggerTimestamp;
 
-    /** Unique ID for this render job. Never null. */
+    /** Single id for this job; used in logs and optional API return. */
     public final UUID jobId;
 
-    /** Absolute world coordinates of the player at trigger time. */
+    /** For template variables {x}, {y}, {z}. */
     public final int triggerX;
     public final int triggerY;
     public final int triggerZ;
 
-    /** Dimension key at trigger time. Never null. */
+    /** For {dimension} in templates. */
     public final String dimension;
 
-    /** World name at trigger time. Never null. */
+    /** For {world} in templates. */
     public final String worldName;
 
     private TriggerContext(
@@ -80,6 +82,7 @@ public final class TriggerContext {
         this.worldName = worldName;
     }
 
+    /** Fluent builder; build() copies lists/maps so the context is immutable and safe to pass across threads. */
     public static final class Builder {
         private UUID subjectUUID;
         private String subjectName;
@@ -166,6 +169,7 @@ public final class TriggerContext {
             return this;
         }
 
+        /** Normalizes profiles (default if empty) and copies collections for immutability. */
         public TriggerContext build() {
             List<String> profiles = outputProfileNames;
             if (profiles == null || profiles.isEmpty()) {

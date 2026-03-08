@@ -12,7 +12,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Discord webhook output target. POSTs multipart/form-data with embed and GIF attachment.
+ * Sends the GIF to a Discord webhook URL with an embed (title, description, fields from
+ * context and metadata). Uses multipart/form-data (payload_json + file) per Discord's
+ * webhook API so the message shows both embed and inline GIF.
  */
 public class DiscordWebhookOutput implements OutputTarget {
 
@@ -22,6 +24,10 @@ public class DiscordWebhookOutput implements OutputTarget {
     private final String url;
     private final Logger logger;
 
+    /**
+     * @param url    Discord webhook URL (e.g. https://discord.com/api/webhooks/...)
+     * @param logger for non-2xx or I/O errors
+     */
     public DiscordWebhookOutput(String url, Logger logger) {
         this.url = url;
         this.logger = logger;

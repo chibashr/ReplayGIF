@@ -15,15 +15,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.HashSet;
 import java.util.Map;
+import org.slf4j.Logger;
+
 import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Material ordinal → {top, left, right} Color. Loads block_colors_defaults.json
- * from plugin resources; on first run generates block_colors.json in the plugin
- * data folder by merging BlockRegistry materials with defaults (missing → #808080).
- * Loads the generated/existing block_colors.json for runtime. Unknown ordinals
- * return gray (#808080) faces, never null.
+ * Maps block ordinals to three face colors (top, left, right) for isometric drawing.
+ * First run writes block_colors.json by merging BlockRegistry with bundled defaults so
+ * server owners can edit colors without losing new materials. Unknown ordinals and
+ * missing hex values fall back to gray so the renderer never sees null or crashes.
  */
 public class BlockColorMap {
 
@@ -46,19 +47,27 @@ public class BlockColorMap {
     private final boolean[] emissiveByOrdinal;
 
     /**
-     * @param dataFolder        plugin data folder (e.g. plugin.getDataFolder())
-     * @param blockColorsFileName filename for generated file (e.g. "block_colors.json")
-     * @param blockRegistry     registry to merge materials from
-     * @param defaultsResource  stream of block_colors_defaults.json (e.g. plugin.getResource("block_colors_defaults.json"))
+     * Loads or generates the color map. If the file does not exist, we merge BlockRegistry
+     * with defaults and write it so future runs and user edits persist.
+     *
+     * @param dataFolder         plugin data folder for block_colors.json
+     * @param blockColorsFileName name of the JSON file
+     * @param blockRegistry      source of material names and ordinal count
+     * @param defaultsResource   bundled defaults (Material name → hex)
+     * @param logger             for "Generated block_colors.json" and "BlockColorMap loaded"
      */
     public BlockColorMap(File dataFolder, String blockColorsFileName,
-                         BlockRegistry blockRegistry, InputStream defaultsResource) throws IOException {
+                         BlockRegistry blockRegistry, InputStream defaultsResource,
+                         Logger logger) throws IOException {
         this.ordinalCount = blockRegistry.getOrdinalCount();
         Map<String, String> defaults = loadDefaults(defaultsResource);
         File blockColorsFile = new File(dataFolder, blockColorsFileName);
         if (!blockColorsFile.exists()) {
             dataFolder.mkdirs();
             generateBlockColorsFile(blockColorsFile, blockRegistry, defaults);
+            if (logger != null) {
+                logger.info("Generated block_colors.json from BlockRegistry and defaults.");
+            }
         }
         Map<String, String> runtime = loadJsonFile(blockColorsFile);
         this.baseColorByOrdinal = new Color[ordinalCount];
@@ -68,6 +77,9 @@ public class BlockColorMap {
             String hex = runtime.getOrDefault(m.name(), DEFAULT_GRAY);
             baseColorByOrdinal[i] = parseHex(hex);
             emissiveByOrdinal[i] = EMISSIVE_MATERIALS.contains(m.name());
+        }
+        if (logger != null) {
+            logger.info("BlockColorMap loaded.");
         }
     }
 
@@ -136,7 +148,7 @@ public class BlockColorMap {
         return Math.max(0, Math.min(255, value));
     }
 
-    /** Returns true if the material is emissive (glow, 120% top face). */
+    /** True for glow blocks (torch, lava, etc.) so the renderer draws a glow pass. */
     public boolean isEmissive(short ordinal) {
         if (ordinal < 0 || ordinal >= ordinalCount) {
             return false;
@@ -145,9 +157,8 @@ public class BlockColorMap {
     }
 
     /**
-     * Returns face colors for the given material ordinal. Unknown ordinals
-     * return gray (#808080) for all three faces. Never returns null.
-     * Shade: top 100%, left 75%, right 55%. Emissive: top 120% (clamped to 255).
+     * Three face colors for isometric drawing. Shading (left 75%, right 55%) gives depth;
+     * emissive blocks get 120% on top. Unknown ordinal returns gray for all three.
      */
     public BlockFaceColors getFaces(short ordinal) {
         if (ordinal < 0 || ordinal >= ordinalCount) {

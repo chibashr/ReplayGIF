@@ -12,7 +12,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Generic webhook output target. POSTs multipart/form-data to an arbitrary URL with configurable headers.
+ * POSTs the GIF to any URL as multipart/form-data (payload_json + file) so external systems
+ * can receive replays without Discord-specific format. Optional custom headers allow auth or
+ * custom endpoints. Metadata and context are included in payload_json for server-side use.
  */
 public class GenericWebhookOutput implements OutputTarget {
 
@@ -23,6 +25,11 @@ public class GenericWebhookOutput implements OutputTarget {
     private final Map<String, String> headers;
     private final Logger logger;
 
+    /**
+     * @param url     POST endpoint (e.g. https://example.com/upload)
+     * @param headers optional (e.g. Authorization); null treated as empty
+     * @param logger  for non-2xx or I/O errors
+     */
     public GenericWebhookOutput(String url, Map<String, String> headers, Logger logger) {
         this.url = url;
         this.headers = headers != null ? Map.copyOf(headers) : Map.of();

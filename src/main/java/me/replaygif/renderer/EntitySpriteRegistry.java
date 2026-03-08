@@ -18,11 +18,10 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
- * EntityType → BufferedImage sprite. At startup: if client jar path is set and
- * present, extracts entity textures from assets/minecraft/textures/entity/ via
- * ZipFile and caches per EntityType; otherwise loads bundled stand-in sprites
- * from plugin resources. Also loads entity_bounds.json for getBounds(); fallback
- * 0.6×1.8 for humanoids.
+ * Provides a sprite image per EntityType for the isometric entity pass. Prefer client jar
+ * textures when configured so entities match Minecraft visuals; fallback to bundled sprites
+ * when the jar is missing or not set. Bounds (width/height) come from entity_bounds.json so
+ * sprite scaling matches entity size; default 0.6×1.8 covers players and humanoids.
  */
 public class EntitySpriteRegistry {
 
@@ -38,8 +37,11 @@ public class EntitySpriteRegistry {
     private volatile BufferedImage gravestone;
 
     /**
-     * @param plugin         for resource loading (entity_bounds.json, bundled sprites)
-     * @param clientJarPath  configured path to client jar; if null/empty or file missing, use bundled only
+     * Loads bounds and sprites at construction. clientJarPath optional; if valid we read
+     * from assets/minecraft/textures/entity/ in the jar, else we use plugin resources.
+     *
+     * @param plugin        for getResource() and logger
+     * @param clientJarPath path to client jar or null/empty to use bundled sprites only
      */
     public EntitySpriteRegistry(JavaPlugin plugin, String clientJarPath) throws IOException {
         this.plugin = plugin;
@@ -105,23 +107,24 @@ public class EntitySpriteRegistry {
                 }
             }
         }
+        if (fromJar) {
+            plugin.getSLF4JLogger().info("EntitySpriteRegistry: using client jar at {}", clientJarPath.trim());
+        } else {
+            plugin.getSLF4JLogger().info("EntitySpriteRegistry: using bundled sprites (client jar not found or not configured).");
+        }
     }
 
-    /**
-     * Returns the sprite for the given entity type, if available.
-     */
+    /** Sprite for this entity type; empty if not found (renderer uses placeholder). */
     public Optional<BufferedImage> getSprite(EntityType type) {
         return Optional.ofNullable(spriteByType.get(type));
     }
 
-    /**
-     * Returns bounding box for the entity type. Fallback 0.6×1.8 for unknown types.
-     */
+    /** Width and height in blocks for sprite scaling; default 0.6×1.8 when not in bounds file. */
     public BoundingBox getBounds(EntityType type) {
         return boundsByType.getOrDefault(type, new BoundingBox(DEFAULT_WIDTH, DEFAULT_HEIGHT));
     }
 
-    /** Bundled fire overlay sprite (composited over entities on fire). May be null if resource missing. */
+    /** Lazy-loaded fire overlay for entities with onFire; null if resource missing. */
     public BufferedImage getFireOverlay() {
         if (fireOverlay == null) {
             synchronized (this) {
@@ -133,7 +136,7 @@ public class EntitySpriteRegistry {
         return fireOverlay;
     }
 
-    /** Bundled gravestone sprite (death marker). May be null if resource missing. */
+    /** Lazy-loaded gravestone for death overlay; null if resource missing. */
     public BufferedImage getGravestone() {
         if (gravestone == null) {
             synchronized (this) {

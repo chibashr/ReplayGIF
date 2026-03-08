@@ -4,9 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Per-player circular buffer of WorldSnapshots. Written on the main thread
- * by SnapshotScheduler, read via slice() on async threads by TriggerHandler.
- * slice() returns a copy so the render pipeline sees an immutable list.
+ * Per-player ring buffer of world frames so we never block the main thread on I/O.
+ * Writes happen only on the main tick (SnapshotScheduler); reads (slice) happen on the
+ * render thread. Returning a copy from slice() guarantees the render pipeline never sees
+ * the ring mutate mid-iteration and keeps WorldSnapshot list effectively immutable.
  */
 public class SnapshotBuffer {
 
@@ -18,6 +19,7 @@ public class SnapshotBuffer {
     /** Milliseconds since epoch when spectator mode was entered. -1 if not in spectator mode. */
     private volatile long spectatorEntryTime;
 
+    /** Capacity is typically buffer_seconds * fps; fixed at creation so the ring size is stable. */
     public SnapshotBuffer(int capacity) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be positive");
@@ -30,8 +32,8 @@ public class SnapshotBuffer {
     }
 
     /**
-     * Writes a new snapshot. Overwrites the oldest slot when full.
-     * Called on the main thread only. No-op when paused.
+     * Appends one frame; when full the oldest is overwritten so we always keep the latest window.
+     * Main-thread only; no-op when paused so spectator-time window does not keep growing.
      */
     public void write(WorldSnapshot snapshot) {
         if (paused) {
@@ -45,9 +47,8 @@ public class SnapshotBuffer {
     }
 
     /**
-     * Returns an immutable ordered list of snapshots within [fromTimestamp, toTimestamp].
-     * Oldest first. Copies frames so the caller cannot mutate the ring.
-     * Called from TriggerHandler on the async thread.
+     * Time-window slice for the render pipeline; oldest-first order matches replay chronology.
+     * Returns a copy so async readers never observe the ring being overwritten during iteration.
      */
     public List<WorldSnapshot> slice(long fromTimestamp, long toTimestamp) {
         int c = count;
@@ -80,42 +81,42 @@ public class SnapshotBuffer {
         return List.copyOf(result);
     }
 
-    /** Pauses writes. Called when spectator window expires. */
+    /** Stops new frames from being written once the spectator capture window is exhausted. */
     public void pause() {
         this.paused = true;
     }
 
-    /** Resumes writes. Called on spectator mode exit. */
+    /** Resumes writing when the player leaves spectator so the buffer fills again. */
     public void resume() {
         this.paused = false;
     }
 
-    /** Sets spectator entry time (ms since epoch). -1 when not in spectator mode. */
+    /** Records when the player entered spectator; used to enforce spectator_capture_seconds then pause. */
     public void setSpectatorEntryTime(long timeMs) {
         this.spectatorEntryTime = timeMs;
     }
 
-    /** Milliseconds since epoch when spectator mode was entered; -1 if not in spectator. */
+    /** When spectator capture started; -1 means not in spectator (used by scheduler for pause/resume). */
     public long getSpectatorEntryTime() {
         return spectatorEntryTime;
     }
 
-    /** Whether writes are currently paused. */
+    /** True when buffer is paused (e.g. spectator window exhausted); scheduler skips write. */
     public boolean isPaused() {
         return paused;
     }
 
-    /** Number of frames currently in the buffer (0 to capacity). */
+    /** Current frame count; only reaches capacity after the ring has been filled once. */
     public int getCount() {
         return count;
     }
 
-    /** Buffer capacity (buffer_seconds * fps). */
+    /** Maximum frames held; matches the configured buffer window. */
     public int getCapacity() {
         return ring.length;
     }
 
-    /** Most recently written snapshot, or null if buffer is empty. For admin inspection only. */
+    /** Latest frame in the ring; null if none yet. Used for diagnostics, not the pipeline. */
     public WorldSnapshot getLatestSnapshot() {
         if (count == 0) {
             return null;

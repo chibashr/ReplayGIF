@@ -9,8 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Filesystem output target. Writes GIF to a path within the plugin directory.
- * Path template supports variables; resolved path must stay inside plugin directory.
+ * Writes the GIF to a file under the plugin data folder. Path is resolved from a template
+ * (e.g. "replays/{date}/{player}_{event}.gif") and normalized so we never write outside the
+ * plugin directory—prevents path traversal from config or metadata.
  */
 public class FilesystemOutput implements OutputTarget {
 
@@ -18,6 +19,11 @@ public class FilesystemOutput implements OutputTarget {
     private final File pluginDataFolder;
     private final Logger logger;
 
+    /**
+     * @param pathTemplate     template with {player}, {event}, {date}, etc.; resolved via resolveForPath
+     * @param pluginDataFolder base directory; resolved path must be under this
+     * @param logger           for path or write errors
+     */
     public FilesystemOutput(String pathTemplate, File pluginDataFolder, Logger logger) {
         this.pathTemplate = pathTemplate;
         this.pluginDataFolder = pluginDataFolder;

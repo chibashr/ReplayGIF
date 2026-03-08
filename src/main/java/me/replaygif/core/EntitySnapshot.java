@@ -5,40 +5,44 @@ import org.bukkit.entity.EntityType;
 import java.util.UUID;
 
 /**
- * Immutable. One entity within a WorldSnapshot's capture volume.
+ * Immutable snapshot of one entity inside the capture volume at frame time.
+ * Stored per-frame so the renderer can draw entities in correct order and apply
+ * visibility/fire/name without touching the live world. Relative coordinates keep
+ * the frame independent of world origin.
  */
 public final class EntitySnapshot {
 
-    /** The Bukkit EntityType. Never null. */
+    /** Bukkit entity type for sprite lookup. */
     public final EntityType type;
 
-    /** Position relative to the snapshot's originX/Y/Z. */
+    /** Position relative to snapshot origin (player block position) for isometric projection. */
     public final double relX;
     public final double relY;
     public final double relZ;
 
-    /** Entity facing direction in degrees. Same convention as playerYaw. */
+    /** Facing in degrees (Minecraft convention) for possible future use. */
     public final float yaw;
 
-    /** UUID of the entity. Never null. */
+    /** Used by SkinCache for player face; other entities use type for sprite. */
     public final UUID uuid;
 
-    /** True if this entity is a player at capture time. */
+    /** True for players so we use skin face instead of entity sprite and show name. */
     public final boolean isPlayer;
 
-    /** True if the entity was on fire at capture time. */
+    /** True when we should composite the fire overlay. */
     public final boolean onFire;
 
-    /** True if the entity was invisible at capture time. */
+    /** True when we draw the entity at reduced opacity. */
     public final boolean invisible;
 
-    /** The entity's display name if set, otherwise null. */
+    /** Custom name for name tag; players use subject name from context. */
     public final String customName;
 
-    /** Bounding box dimensions in blocks at capture time. All values positive, never zero. */
+    /** Used to scale sprite size in the isometric view; clamped to avoid zero. */
     public final double boundingWidth;
     public final double boundingHeight;
 
+    /** All fields set at construction; no mutators so async readers see a stable snapshot. */
     public EntitySnapshot(
             EntityType type,
             double relX,

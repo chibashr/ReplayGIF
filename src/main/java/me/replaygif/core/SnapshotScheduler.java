@@ -19,9 +19,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Repeating task: writes WorldSnapshot frames to each player's SnapshotBuffer.
- * Runs on the main thread at configured FPS. Respects spectator pause/resume
- * (capture window then pause until spectator exit).
+ * Single repeating task that drives all per-player capture so we don't spawn one runnable per player.
+ * Runs on the main thread at config FPS; each tick iterates online players and writes one WorldSnapshot
+ * per buffer. Spectator logic (capture for N seconds then pause) keeps memory bounded while still
+ * allowing a short spectator replay window.
  */
 public class SnapshotScheduler extends BukkitRunnable {
 
@@ -30,6 +31,12 @@ public class SnapshotScheduler extends BukkitRunnable {
     private final ConfigManager configManager;
     private final BlockRegistry blockRegistry;
 
+    /**
+     * @param plugin         for runTaskTimer and getServer().getOnlinePlayers()
+     * @param buffers        shared map of player UUID → SnapshotBuffer (scheduler only writes)
+     * @param configManager  fps, volume_size, spectator_capture_seconds
+     * @param blockRegistry  to encode block types as ordinals in the snapshot
+     */
     public SnapshotScheduler(
             JavaPlugin plugin,
             Map<UUID, SnapshotBuffer> buffers,
@@ -42,8 +49,8 @@ public class SnapshotScheduler extends BukkitRunnable {
     }
 
     /**
-     * Starts the repeating task. Interval = 20 / fps ticks (minimum 1).
-     * Call after all other components are ready.
+     * Schedules the capture loop. Interval is 20/fps ticks (min 1) so we don't run faster than the server tick.
+     * Call once after buffers and config are ready.
      */
     public void start() {
         int fps = configManager.getFps();
