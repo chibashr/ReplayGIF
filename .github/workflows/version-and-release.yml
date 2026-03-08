@@ -65,7 +65,7 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build JAR
-        run: ./gradlew build --no-daemon
+        run: chmod +x gradlew && ./gradlew build --no-daemon
 
       - name: Create Release and upload JAR
         uses: softprops/action-gh-release@v2
