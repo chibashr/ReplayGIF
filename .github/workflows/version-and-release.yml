@@ -1,0 +1,77 @@
+# Manually run to set a new version, push it, tag it, build the JAR, and publish a GitHub Release.
+#
+# Usage: Actions → Version and Release → Run workflow → enter version (e.g. 0.1.0)
+#
+# Job runs on the host using the committed Gradle wrapper; build runs on host so Paper API resolves.
+
+name: Version and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  version-tag-build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Normalize version
+        id: ver
+        run: |
+          v="${{ inputs.version }}"
+          v="${v#v}"
+          echo "version=${v}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in build.gradle.kts
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ steps.ver.outputs.version }}"/' build.gradle.kts
+
+      - name: Commit and push version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add build.gradle.kts
+          git diff --staged --quiet || git commit -m "Release ${{ steps.ver.outputs.tag }}"
+          git push origin HEAD
+
+      - name: Create and push tag
+        run: |
+          git tag "${{ steps.ver.outputs.tag }}"
+          git push origin "${{ steps.ver.outputs.tag }}"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/build.gradle.kts', '**/settings.gradle.kts', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Build JAR
+        run: ./gradlew build --no-daemon
+
+      - name: Create Release and upload JAR
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          files: build/libs/*.jar
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
