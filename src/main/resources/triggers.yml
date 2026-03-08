@@ -1,0 +1,47 @@
+# ReplayGif — Trigger rules
+# Three sources feed the same pipeline: internal Bukkit listeners, inbound webhook, API/event.
+# Pre/post window and output profiles are defined per rule or use defaults below.
+
+# Internal Bukkit listeners. PlayerDeathEvent is always registered.
+# Other events are registered dynamically by event class name (fully-qualified).
+internal:
+  player_death:
+    enabled: true
+    output_profiles: ["default"]
+    pre_seconds: 4.0
+    post_seconds: 1.0
+  # Example dynamic listener (uncomment and set event_class + resolver):
+  # player_advancement:
+  #   enabled: false
+  #   event_class: "org.bukkit.event.player.PlayerAdvancementDoneEvent"
+  #   resolver: player_method
+  #   output_profiles: ["default"]
+  #   pre_seconds: 4.0
+  #   post_seconds: 1.0
+  #   label_path: null
+  #   label_fallback: "{player} earned an advancement"
+  #   conditions: []
+
+# Inbound HTTP webhook (POST /trigger). Event key matched against rules; supports trailing wildcards.
+inbound:
+  use_default_for_unmatched: false
+  defaults:
+    default_pre_seconds: 4.0
+    default_post_seconds: 1.0
+    default_output_profiles: ["default"]
+  rules: []
+  # Example:
+  # rules:
+  #   - event_key: "player.death"
+  #     subject_path: "player.uuid"
+  #     label_path: "message"
+  #     label_fallback: "{player} died"
+  #     output_profiles: ["default"]
+  #     pre_seconds: 4.0
+  #     post_seconds: 1.0
+
+# Defaults for API and ReplayGifTriggerEvent callers when pre_seconds/post_seconds/profiles are omitted.
+api:
+  default_pre_seconds: 4.0
+  default_post_seconds: 1.0
+  default_output_profiles: ["default"]

@@ -1,0 +1,11 @@
+# ReplayGif — English (US) strings
+# User-facing messages, console log text, embed defaults. Structured for future localization.
+
+plugin:
+  enabling: "ReplayGif enabling..."
+  disabling: "ReplayGif disabling..."
+
+commands:
+  usage: "/replaygif <reload|status|test>"
+  reload_success: "Configuration reloaded."
+  status_header: "ReplayGif status"

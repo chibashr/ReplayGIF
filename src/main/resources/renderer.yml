@@ -1,0 +1,30 @@
+# ReplayGif — Renderer configuration
+# Isometric projection and asset paths.
+
+# Tile dimensions in pixels (width, height). Default 16×8 gives standard isometric block appearance.
+# Output image size depends on volume_size and these values.
+tile_width: 16
+tile_height: 8
+
+# Edge length of the cubic capture volume in blocks (centered on player).
+# 32³ = 32768 blocks per frame. Larger volume = larger output image and more blocks to draw.
+volume_size: 32
+
+# Dollhouse cutout: blocks where (relX + relZ) > cut_offset are culled.
+# Exposes cave interiors; range 0–12. Default 4.
+cut_offset: 4
+
+# Path to Minecraft client jar for extracting entity textures (optional).
+# If absent or invalid, bundled stand-in sprites are used. Leave empty for stand-in only.
+client_jar_path: ""
+
+# Whether to fetch and render player skins (face from skin sheet).
+# Requires outbound HTTPS to sessionserver.mojang.com. Disable for offline servers.
+skin_rendering_enabled: true
+
+# Skin cache TTL in seconds. Cached skins are reused until expiry.
+skin_cache_ttl_seconds: 3600
+
+# Path to block_colors.json relative to plugin data folder.
+# File is auto-generated on first run from block_colors_defaults.json; user-editable.
+block_colors_path: "block_colors.json"

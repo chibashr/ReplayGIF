@@ -1,0 +1,22 @@
+name: ReplayGif
+version: '${version}'
+main: me.replaygif.ReplayGifPlugin
+api-version: '1.18'
+description: Renders animated GIFs of player events from server-side world state.
+author: chibashr
+website: https://github.com/chibashr/replaygif
+
+softdepend: []
+# No hard dependencies. all-the-webhooks integration is via inbound HTTP
+# webhook, not a plugin dependency.
+
+commands:
+  replaygif:
+    description: ReplayGif management commands.
+    usage: /replaygif <reload|status|test [player]>
+    permission: replaygif.admin
+
+permissions:
+  replaygif.admin:
+    description: Access to all ReplayGif management commands.
+    default: op

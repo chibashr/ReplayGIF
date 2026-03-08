@@ -1,0 +1,29 @@
+# ReplayGif — Main configuration
+# Copy to plugins/ReplayGif/ on first run. All values have defaults.
+
+# Rolling buffer: how many seconds of world state to keep per online player.
+# Capacity = buffer_seconds * fps. Snapshots are ephemeral — lost on reload or shutdown.
+buffer_seconds: 30
+
+# Capture rate: frames per second (1–20). Scheduler runs at this rate on the main thread.
+# Higher FPS = smoother GIFs but more CPU and memory.
+fps: 10
+
+# Spectator mode: seconds of frames to capture after player enters spectator (-1 = always, 0 = never).
+# After this window, capture pauses until the player leaves spectator. Buffer is never flushed on state transition.
+spectator_capture_seconds: 0
+
+# Number of threads in the async render pool. Each trigger submits one job (render + encode + dispatch).
+async_threads: 2
+
+# Allow plugins to trigger renders via ReplayGifAPI or ReplayGifTriggerEvent.
+# If false, only internal listeners and the inbound webhook can trigger.
+allow_api_triggers: true
+
+# Inbound HTTP webhook server (for external integrations, e.g. all-the-webhooks).
+# Disabled by default. Enable to accept POST /trigger with X-ReplayGif-Secret header.
+webhook_server:
+  enabled: false
+  port: 8765
+  # Change this in production. If enabled and left as "changeme", a prominent WARNING is logged.
+  secret: "changeme"

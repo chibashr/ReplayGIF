@@ -1,0 +1,18 @@
+# Gradle
+build/
+.gradle/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.planning/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Wrapper temp (if re-generated)
+gradle/wrapper/*.zip
+gradle/wrapper/gradle-*/

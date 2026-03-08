@@ -1,0 +1,106 @@
+package me.replaygif.trigger;
+
+import me.replaygif.config.TriggerRule;
+import me.replaygif.config.TriggerRuleRegistry;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.slf4j.Logger;
+
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * Bukkit listener: PlayerDeathEvent only. Resolution per trigger-resolution.md section 1a.
+ * MONITOR priority, ignoreCancelled = false.
+ */
+public final class DeathListener implements Listener {
+
+    private final TriggerHandler triggerHandler;
+    private final TriggerRuleRegistry ruleRegistry;
+    private final Logger logger;
+
+    public DeathListener(TriggerHandler triggerHandler, TriggerRuleRegistry ruleRegistry, Logger logger) {
+        this.triggerHandler = triggerHandler;
+        this.ruleRegistry = ruleRegistry;
+        this.logger = logger;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Optional<TriggerRule> ruleOpt = ruleRegistry.getPlayerDeathRule();
+        if (ruleOpt.isEmpty()) {
+            logger.debug("PlayerDeathEvent fired but no player_death rule configured; skipping.");
+            return;
+        }
+        TriggerRule rule = ruleOpt.get();
+        if (!rule.enabled) {
+            logger.debug("PlayerDeathEvent fired but player_death rule is disabled; skipping.");
+            return;
+        }
+
+        Player subject = event.getEntity();
+        if (subject == null) {
+            return;
+        }
+
+        String eventLabel = getDeathMessagePlainText(event, subject);
+        Location loc = subject.getLocation();
+        World world = loc.getWorld();
+        String dimension = "world";
+        if (world != null) {
+            if (world instanceof org.bukkit.Keyed keyed && keyed.getKey() != null) {
+                dimension = keyed.getKey().toString();
+            } else {
+                dimension = world.getName();
+            }
+        }
+        String worldName = world != null ? world.getName() : "world";
+
+        TriggerContext context = new TriggerContext.Builder()
+                .subjectUUID(subject.getUniqueId())
+                .subjectName(subject.getName())
+                .eventLabel(eventLabel)
+                .preSeconds(rule.preSeconds)
+                .postSeconds(rule.postSeconds)
+                .outputProfileNames(rule.outputProfileNames)
+                .metadata(java.util.Map.of())
+                .triggerTimestamp(System.currentTimeMillis())
+                .jobId(UUID.randomUUID())
+                .triggerX(loc.getBlockX())
+                .triggerY(loc.getBlockY())
+                .triggerZ(loc.getBlockZ())
+                .dimension(dimension)
+                .worldName(worldName)
+                .build();
+
+        triggerHandler.handle(context);
+    }
+
+    /**
+     * Null-safe death message extraction. Uses Adventure PlainTextComponentSerializer if
+     * event.deathMessage() returns a Component; fallback "{player} died" if null or suppressed.
+     */
+    private String getDeathMessagePlainText(PlayerDeathEvent event, Player player) {
+        try {
+            Component msg = event.deathMessage();
+            if (msg == null) {
+                return player.getName() + " died";
+            }
+            String plain = PlainTextComponentSerializer.plainText().serialize(msg);
+            if (plain == null || plain.isBlank()) {
+                return player.getName() + " died";
+            }
+            return plain;
+        } catch (Throwable t) {
+            logger.debug("Could not get death message, using fallback", t);
+            return player.getName() + " died";
+        }
+    }
+}
