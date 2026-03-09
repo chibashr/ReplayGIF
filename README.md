@@ -34,7 +34,7 @@ For realistic block appearance (like in-game), you can bundle vanilla 1.21 block
 
 ### Entity and item textures from client JAR
 
-Entity sprites (zombie, creeper, etc.) and item icons (dropped items in the scene) use vanilla textures when `client_jar_path` in `renderer.yml` points to a Minecraft client JAR (e.g. `.minecraft/versions/1.21/<version>.jar`). Without it, entities use bundled stand-in sprites and items use a gray fallback.
+Entity sprites (zombie, creeper, fish, etc.) and item icons (dropped items in the scene) use vanilla textures when `client_jar_path` in `renderer.yml` points to a Minecraft client JAR (e.g. `.minecraft/versions/1.21/<version>.jar`). Subfolder paths (e.g. `entity/fish/`) are supported. Without the JAR, entities use bundled sprites or marker colors from `entity_bounds.json`; items use a gray fallback.
 
 - **outputs.yml** — Defines named output profiles; each profile lists one or more targets (e.g. Discord webhook URL, generic webhook, or filesystem path template). Edit when adding or changing where GIFs are sent or saved. Profile names are referenced from `triggers.yml`.
 
@@ -146,6 +146,9 @@ These are common misconfigurations and how they appear in the console.
 5. **Slice returned no frames**  
    Log: `[<jobId>] Slice returned no frames. Job failed.`  
    Cause: The requested time window (trigger time ± pre/post seconds) contained no frames in the player’s buffer. Typical causes: buffer_seconds or FPS too low so the window is not covered, trigger fired before enough time had passed after the player joined, or clock/trigger timestamp mismatch. Increase `buffer_seconds` or ensure the player has been online and in range of the scheduler for at least the pre window before the trigger.
+
+6. **Entities as gray or colored boxes; player as oversized face**  
+   Cause: Missing or invalid `client_jar_path` (for entity textures), or skin fetch failing. Configure `client_jar_path` in `renderer.yml` to a 1.21+ client JAR for proper entity sprites (fish, etc.). For players, skins are fetched from Mojang; ensure `skin_rendering_enabled: true` and outbound HTTPS works. Players render as full-body figures (head, body, limbs) from their skin; if skins fail to load, a placeholder body is used.
 
 If the console shows `webhook_server.enabled is true but webhook_server.secret is still 'changeme'`, change the secret in production to avoid unauthorized use.
 

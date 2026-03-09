@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,9 @@ public class EntitySpriteRegistry {
 
     private static final String ENTITY_TEXTURES_PREFIX = "assets/minecraft/textures/entity/";
     private static final String BUNDLED_SPRITES_PREFIX = "entity_sprites_default/";
+
+    /** Filename (no path) to EntityType when they differ (e.g. fishing_bobber.png -> FISHING_HOOK). */
+    private static final Map<String, EntityType> FILENAME_TO_ENTITY = Map.of("fishing_bobber", EntityType.FISHING_HOOK);
     private static final double DEFAULT_WIDTH = 0.6;
     private static final double DEFAULT_HEIGHT = 1.8;
 
@@ -87,17 +91,28 @@ public class EntitySpriteRegistry {
         boolean fromJar = false;
         if (clientJarPath != null && !clientJarPath.isBlank()) {
             try (ZipFile zip = new ZipFile(clientJarPath.trim())) {
-                for (EntityType type : EntityType.values()) {
-                    String name = type.name().toLowerCase();
-                    String fileName = (type == EntityType.FISHING_HOOK) ? "fishing_bobber.png" : name + ".png";
-                    String path = ENTITY_TEXTURES_PREFIX + fileName;
-                    ZipEntry entry = zip.getEntry(path);
-                    if (entry != null && !entry.isDirectory()) {
-                        try (InputStream is = zip.getInputStream(entry)) {
-                            BufferedImage img = ImageIO.read(is);
-                            if (img != null) {
-                                spriteByType.put(type, img);
-                            }
+                Enumeration<? extends ZipEntry> entries = zip.entries();
+                while (entries.hasMoreElements()) {
+                    ZipEntry entry = entries.nextElement();
+                    if (entry.isDirectory()) continue;
+                    String name = entry.getName();
+                    if (!name.startsWith(ENTITY_TEXTURES_PREFIX) || !name.endsWith(".png")) continue;
+                    String relPath = name.substring(ENTITY_TEXTURES_PREFIX.length());
+                    String baseName = relPath.contains("/")
+                            ? relPath.substring(relPath.lastIndexOf('/') + 1, relPath.length() - 4)
+                            : relPath.substring(0, relPath.length() - 4);
+                    EntityType type = FILENAME_TO_ENTITY.get(baseName);
+                    if (type == null) {
+                        try {
+                            type = EntityType.valueOf(baseName.toUpperCase().replace("-", "_"));
+                        } catch (IllegalArgumentException ignored) {
+                            continue;
+                        }
+                    }
+                    try (InputStream is = zip.getInputStream(entry)) {
+                        BufferedImage img = ImageIO.read(is);
+                        if (img != null) {
+                            spriteByType.put(type, img);
                         }
                     }
                 }
@@ -142,6 +157,15 @@ public class EntitySpriteRegistry {
     /** Configured marker color for this entity type when no sprite is available; empty if not in entity_bounds.json or no color field. */
     public Optional<Color> getMarkerColor(EntityType type) {
         return Optional.ofNullable(markerColorByType.get(type));
+    }
+
+    /** Marker color for fallback rendering: configured color, or derived from entity type name so every type gets a distinct color. */
+    public Color getMarkerColorOrDerived(EntityType type) {
+        Color configured = markerColorByType.get(type);
+        if (configured != null) return configured;
+        int hash = type.name().hashCode();
+        float hue = ((hash % 360) + 360) % 360 / 360f;
+        return Color.getHSBColor(hue, 0.6f, 0.8f);
     }
 
     /**

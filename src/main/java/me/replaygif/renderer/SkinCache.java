@@ -5,6 +5,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.profile.PlayerTextures;
 
 import javax.imageio.ImageIO;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,10 +23,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Caches player skin faces (8×8 region from the 64×64 skin texture) so the entity pass
- * can draw player heads without blocking the main thread. Fetch is triggered on join and
- * stored with TTL so we don't re-fetch every frame; getFace returns empty until the async
- * load completes, then we use the placeholder so rendering never blocks on the network.
+ * Caches player skin textures for rendering: full-body composite (head + body + limbs)
+ * and face-only for compatibility. The entity pass draws the full body so players
+ * appear as walking figures, not oversized faces. Fetch is triggered on join and
+ * stored with TTL; getBody/getFace return empty until the async load completes.
  *
  * <p>Uses {@link org.bukkit.entity.Player#getPlayerProfile()} (available since 1.18); we do not
  * call {@code profile.complete()} so the main thread never blocks on profile lookup. On offline
@@ -40,12 +42,15 @@ public class SkinCache {
     private static final int FACE_X = 8;
     private static final int FACE_Y = 8;
     private static final int FACE_SIZE = 8;
+    private static final int OUT_WIDTH = 32;
+    private static final int OUT_HEIGHT = 64;
 
     private final JavaPlugin plugin;
     private final boolean enabled;
     private final int ttlSeconds;
-    private final ConcurrentHashMap<UUID, CachedFace> cache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, CachedSkin> cache = new ConcurrentHashMap<>();
     private volatile BufferedImage placeholder;
+    private volatile BufferedImage placeholderBody;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -133,10 +138,11 @@ public class SkinCache {
                 return;
             }
             BufferedImage face = extractFace(fullSkin);
-            if (face != null) {
+            BufferedImage bodyImage = extractFullBody(fullSkin);
+            if (face != null || bodyImage != null) {
                 long expiresAt = System.currentTimeMillis() + ttlSeconds * 1000L;
-                cache.put(uuid, new CachedFace(face, expiresAt));
-                plugin.getSLF4JLogger().debug("Cached skin face for {}", uuid);
+                cache.put(uuid, new CachedSkin(face, bodyImage, expiresAt));
+                plugin.getSLF4JLogger().debug("Cached skin for {}", uuid);
             }
         } catch (Exception e) {
             plugin.getSLF4JLogger().debug("Failed to fetch skin for {}", uuid, e);
@@ -153,9 +159,32 @@ public class SkinCache {
         return skin.getSubimage(FACE_X, FACE_Y, FACE_SIZE, FACE_SIZE);
     }
 
-    /** Cached face or empty if not yet loaded or expired; renderer uses placeholder when empty. */
+    /** Full-body composite: head, body, arms, legs from 64×64 skin (classic layout). */
+    private static BufferedImage extractFullBody(BufferedImage skin) {
+        int w = skin.getWidth();
+        int h = skin.getHeight();
+        if (w < 48 || h < 64) {
+            return null;
+        }
+        BufferedImage out = new BufferedImage(OUT_WIDTH, OUT_HEIGHT, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = out.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        try {
+            g.drawImage(skin.getSubimage(FACE_X, FACE_Y, FACE_SIZE, FACE_SIZE), 8, 0, 16, 16, null);
+            g.drawImage(skin.getSubimage(20, 20, 8, 12), 8, 16, 16, 24, null);
+            g.drawImage(skin.getSubimage(44, 20, 4, 12), 4, 16, 8, 24, null);
+            g.drawImage(skin.getSubimage(36, 52, 4, 12), 20, 16, 8, 24, null);
+            g.drawImage(skin.getSubimage(4, 20, 4, 12), 8, 40, 8, 24, null);
+            g.drawImage(skin.getSubimage(20, 52, 4, 12), 16, 40, 8, 24, null);
+        } finally {
+            g.dispose();
+        }
+        return out;
+    }
+
+    /** Cached face or empty if not yet loaded or expired. */
     public Optional<BufferedImage> getFace(UUID uuid) {
-        CachedFace cached = cache.get(uuid);
+        CachedSkin cached = cache.get(uuid);
         if (cached == null) {
             return Optional.empty();
         }
@@ -163,7 +192,20 @@ public class SkinCache {
             cache.remove(uuid, cached);
             return Optional.empty();
         }
-        return Optional.of(cached.face);
+        return Optional.ofNullable(cached.face);
+    }
+
+    /** Full-body composite; empty if not loaded or expired. Renderer uses this for player sprites. */
+    public Optional<BufferedImage> getBody(UUID uuid) {
+        CachedSkin cached = cache.get(uuid);
+        if (cached == null) {
+            return Optional.empty();
+        }
+        if (System.currentTimeMillis() > cached.expiresAt) {
+            cache.remove(uuid, cached);
+            return Optional.empty();
+        }
+        return Optional.ofNullable(cached.body);
     }
 
     /** Fallback when getFace returns empty; lazy-loaded from resources. */
@@ -187,10 +229,38 @@ public class SkinCache {
         return placeholder;
     }
 
+    /** Full-body fallback when getBody returns empty; generic humanoid shape. */
+    public BufferedImage getPlaceholderBody() {
+        if (placeholderBody == null) {
+            synchronized (this) {
+                if (placeholderBody == null) {
+                    placeholderBody = createPlaceholderBody();
+                }
+            }
+        }
+        return placeholderBody;
+    }
+
+    private BufferedImage createPlaceholderBody() {
+        BufferedImage face = getPlaceholder();
+        BufferedImage out = new BufferedImage(OUT_WIDTH, OUT_HEIGHT, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = out.createGraphics();
+        try {
+            g.drawImage(face, 8, 0, 16, 16, null);
+            g.setColor(new java.awt.Color(0x72, 0x8B, 0x9A));
+            g.fillRect(8, 16, 16, 24);
+            g.fillRect(8, 40, 8, 24);
+            g.fillRect(16, 40, 8, 24);
+        } finally {
+            g.dispose();
+        }
+        return out;
+    }
+
     /** Stops the fetch executor; call from plugin onDisable to avoid leaks. */
     public void shutdown() {
         executor.shutdownNow();
     }
 
-    private record CachedFace(BufferedImage face, long expiresAt) {}
+    private record CachedSkin(BufferedImage face, BufferedImage body, long expiresAt) {}
 }

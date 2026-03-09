@@ -505,15 +505,15 @@ public class IsometricRenderer {
 
             BufferedImage sprite = null;
             if (e.isPlayer) {
-                Optional<BufferedImage> face = skinCache.getFace(e.uuid);
-                sprite = face.orElse(skinCache.getPlaceholder());
+                Optional<BufferedImage> body = skinCache.getBody(e.uuid);
+                sprite = body.orElseGet(skinCache::getPlaceholderBody);
             } else {
                 Optional<BufferedImage> reg = entitySpriteRegistry.getSprite(e.type);
                 sprite = reg.orElse(null);
             }
             if (sprite == null) {
                 Color markerColor = entitySpriteRegistry != null
-                        ? entitySpriteRegistry.getMarkerColor(e.type).orElse(MARKER_FALLBACK_COLOR)
+                        ? entitySpriteRegistry.getMarkerColorOrDerived(e.type)
                         : MARKER_FALLBACK_COLOR;
                 sprite = createColoredMarker(spriteW, spriteH, markerColor);
             }
