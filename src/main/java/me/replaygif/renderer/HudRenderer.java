@@ -59,12 +59,21 @@ public final class HudRenderer {
     private final int tileHeight;
     private final HudResources resources;
     private final ItemTextureCache itemTextureCache;
+    private final float opacity;
 
     public HudRenderer(int tileWidth, int tileHeight, HudResources resources, ItemTextureCache itemTextureCache) {
+        this(tileWidth, tileHeight, resources, itemTextureCache, 1f);
+    }
+
+    /**
+     * @param opacity 0.0–1.0. 1.0 = fully opaque.
+     */
+    public HudRenderer(int tileWidth, int tileHeight, HudResources resources, ItemTextureCache itemTextureCache, float opacity) {
         this.tileWidth = tileWidth;
         this.tileHeight = tileHeight;
         this.resources = resources;
         this.itemTextureCache = itemTextureCache;
+        this.opacity = Math.max(0f, Math.min(1f, opacity));
     }
 
     /**
@@ -83,6 +92,21 @@ public final class HudRenderer {
             LOG.fine("HUD skipped: image height " + imageHeight + " < " + MIN_IMAGE_HEIGHT_FOR_HUD);
             return;
         }
+        java.awt.Composite prevComposite = null;
+        if (opacity < 1f) {
+            prevComposite = g2d.getComposite();
+            g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity));
+        }
+        try {
+            drawHudInner(g2d, snapshot, imageWidth, imageHeight, frameIndex);
+        } finally {
+            if (prevComposite != null) {
+                g2d.setComposite(prevComposite);
+            }
+        }
+    }
+
+    private void drawHudInner(Graphics2D g2d, WorldSnapshot snapshot, int imageWidth, int imageHeight, int frameIndex) {
         int heartY = imageHeight - (tileHeight * 2);
         int spriteSize = Math.min(tileHeight, resources.getSpriteSize());
         boolean dead = snapshot.playerHealth == 0.0f;

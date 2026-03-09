@@ -32,7 +32,7 @@ class GifEncoderTest {
     /** GE1 — Valid GIF output: magic bytes GIF89a, parseable by ImageIO. */
     @Test
     void ge1_validGifOutput_magicBytesAndParseable() throws IOException {
-        GifEncoder encoder = new GifEncoder();
+        GifEncoder encoder = new GifEncoder(null);
         byte[] out = encoder.encode(frames(5), 100);
         assertNotNull(out);
         assertTrue(out.length >= 6);
@@ -47,7 +47,7 @@ class GifEncoderTest {
     /** GE2 — Frame count: encode N frames, parser sees exactly N frames. */
     @Test
     void ge2_frameCount_exactlyN() throws IOException {
-        GifEncoder encoder = new GifEncoder();
+        GifEncoder encoder = new GifEncoder(null);
         int n = 7;
         byte[] out = encoder.encode(frames(n), 100);
         int count = countGifFrames(out);
@@ -57,7 +57,7 @@ class GifEncoderTest {
     /** GE3 — Frame delay: 10fps = 100ms, 5fps = 200ms, 20fps = 50ms (in hundredths in GIF). */
     @Test
     void ge3_frameDelay_correctHundredths() throws IOException {
-        GifEncoder encoder = new GifEncoder();
+        GifEncoder encoder = new GifEncoder(null);
         byte[] out10 = encoder.encode(frames(3), 100);
         assertGifFrameDelayHundredths(out10, 10);
 
@@ -71,7 +71,7 @@ class GifEncoderTest {
     /** GE4 — Looping: Netscape Application Extension with repeat = 0 (loop forever). */
     @Test
     void ge4_looping_netscapeRepeatZero() {
-        GifEncoder encoder = new GifEncoder();
+        GifEncoder encoder = new GifEncoder(null);
         byte[] out = encoder.encode(frames(3), 100);
         assertTrue(containsNetscapeLoop(out), "GIF must contain Netscape extension with repeat=0");
     }
@@ -79,7 +79,7 @@ class GifEncoderTest {
     /** GE5 — Single frame: encode 1 frame, valid GIF, no exception. */
     @Test
     void ge5_singleFrame_validGifNoException() throws IOException {
-        GifEncoder encoder = new GifEncoder();
+        GifEncoder encoder = new GifEncoder(null);
         byte[] out = encoder.encode(frames(1), 100);
         assertNotNull(out);
         assertTrue(out.length >= 6);

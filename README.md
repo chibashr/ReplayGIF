@@ -21,7 +21,7 @@ All config files live in `plugins/ReplayGif/`. The bundled files are self-docume
 
 - **config.yml** — Core behaviour: buffer length (`buffer_seconds`), capture rate (`fps`), spectator capture window and pause (`spectator_capture_seconds`), size of the render thread pool (`async_threads`), whether API/event triggers are allowed (`allow_api_triggers`), and the inbound webhook server (enabled, port, secret). Edit when tuning performance or enabling the webhook or external API triggers.
 
-- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), optional path to a Minecraft client JAR for entity and item textures (`client_jar_path`), player skin rendering and cache TTL, the block colors file name, and whether to use bundled 1.21 block textures (`block_textures_enabled`). Edit when changing how the GIF looks or where assets are loaded from.
+- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), optional path to a Minecraft client JAR for entity and item textures (`client_jar_path`), player skin rendering and cache TTL, the block colors file name, and whether to use bundled 1.21 block textures (`block_textures_enabled`). GIF background (`gif_background`: `transparent`, `white`, `black`, or hex), and HUD appearance (`hud_enabled`, `hud_opacity`). Edit when changing how the GIF looks or where assets are loaded from.
 
 ### Bundled 1.21 block textures
 

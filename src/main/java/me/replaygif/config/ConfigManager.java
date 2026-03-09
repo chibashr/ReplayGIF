@@ -253,6 +253,21 @@ public class ConfigManager {
         return getBoolean(rendererConfig, "block_textures_enabled", true, RENDERER);
     }
 
+    /** "transparent", "white", "black", or hex e.g. "#FF00FF". Default transparent. */
+    public String getGifBackground() {
+        return getString(rendererConfig, "gif_background", "transparent", RENDERER);
+    }
+
+    /** Whether to draw full HUD (hearts, armor, food, XP, hotbar). False = action bar and boss bars only. */
+    public boolean getHudEnabled() {
+        return getBoolean(rendererConfig, "hud_enabled", true, RENDERER);
+    }
+
+    /** HUD opacity 0–100. 100 = fully opaque. */
+    public int getHudOpacity() {
+        return getInt(rendererConfig, "hud_opacity", 100, 0, 100, RENDERER);
+    }
+
     // ---------- outputs.yml ----------
 
     /**

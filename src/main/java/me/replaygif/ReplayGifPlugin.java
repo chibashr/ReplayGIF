@@ -16,6 +16,8 @@ import me.replaygif.encoder.GifEncoder;
 import me.replaygif.renderer.BlockColorMap;
 import me.replaygif.renderer.BlockTextureRegistry;
 import me.replaygif.renderer.EntitySpriteRegistry;
+import me.replaygif.renderer.HudRenderer;
+import me.replaygif.renderer.HudResources;
 import me.replaygif.renderer.HurtParticleSynthesizer;
 import me.replaygif.renderer.IsometricRenderer;
 import me.replaygif.renderer.ItemTextureCache;
@@ -128,12 +130,13 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         skinCache = new SkinCache(this, configManager.getSkinRenderingEnabled(), configManager.getSkinCacheTtlSeconds());
         getSLF4JLogger().info("SkinCache initialized.");
 
-        // 6. HurtParticleSynthesizer + crack stages + IsometricRenderer
+        // 6. HurtParticleSynthesizer + crack stages + HudRenderer + IsometricRenderer
         HurtParticleSynthesizer hurtParticleSynthesizer = new HurtParticleSynthesizer(
                 configManager.getTileWidth(),
                 configManager.getTileHeight());
         BufferedImage[] crackStages = loadCrackStages();
         ItemTextureCache itemTextureCache = new ItemTextureCache(this, configManager.getClientJarPath());
+        HudRenderer hudRenderer = buildHudRenderer(itemTextureCache);
         IsometricRenderer isometricRenderer = new IsometricRenderer(
                 configManager.getVolumeSize(),
                 configManager.getTileWidth(),
@@ -145,13 +148,13 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 entitySpriteRegistry,
                 skinCache,
                 hurtParticleSynthesizer,
-                null,
+                hudRenderer,
                 crackStages,
                 itemTextureCache);
         getSLF4JLogger().info("IsometricRenderer ready.");
 
         // 7. GifEncoder
-        GifEncoder gifEncoder = new GifEncoder();
+        GifEncoder gifEncoder = new GifEncoder(configManager);
         getSLF4JLogger().info("GifEncoder ready.");
 
         // 8. OutputProfileRegistry
@@ -318,6 +321,26 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
 
     public ReplayGifAPIImpl getReplayGifAPIImpl() {
         return replayGifAPIImpl;
+    }
+
+    /** Builds HudRenderer when hud_enabled; null otherwise (uses minimal HUD: action bar + boss bars). */
+    private HudRenderer buildHudRenderer(ItemTextureCache itemTextureCache) {
+        if (!configManager.getHudEnabled()) {
+            return null;
+        }
+        try {
+            HudResources resources = new HudResources(getClass());
+            float opacity = configManager.getHudOpacity() / 100f;
+            return new HudRenderer(
+                    configManager.getTileWidth(),
+                    configManager.getTileHeight(),
+                    resources,
+                    itemTextureCache,
+                    opacity);
+        } catch (IOException e) {
+            getSLF4JLogger().warn("HUD resources failed to load, using minimal HUD: {}", e.getMessage());
+            return null;
+        }
     }
 
     /** Loads crack_stage_0.png through crack_stage_9.png from plugin resources. Returns null if any fail. */

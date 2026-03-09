@@ -35,3 +35,13 @@ block_colors_path: "block_colors.json"
 # are bundled, blocks are drawn with block_colors.json solid colors. To bundle textures, run:
 #   gradlew extractBlockTextures -PclientJar=/path/to/1.21.jar
 block_textures_enabled: true
+
+# GIF background: "transparent", "white", "black", or hex (e.g. "#FF00FF"). Transparent uses magic
+# pink as chroma key so blocks are not accidentally made transparent.
+gif_background: transparent
+
+# HUD appearance on the GIF. Requires restart to apply changes.
+hud_enabled: true
+# When true, draws full HUD (hearts, armor, food, XP bar, hotbar). When false, only action bar and boss bars.
+hud_opacity: 100
+# Opacity 0–100. 100 = fully opaque.
