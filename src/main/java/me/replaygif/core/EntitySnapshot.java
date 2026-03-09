@@ -20,8 +20,14 @@ public final class EntitySnapshot {
     public final double relY;
     public final double relZ;
 
-    /** Facing in degrees (Minecraft convention) for possible future use. */
+    /** Facing in degrees (Minecraft convention). 0=South, 90=West, 180=North, 270=East. */
     public final float yaw;
+
+    /** Look pitch in degrees (-90=up, 0=horizon, 90=down). */
+    public final float pitch;
+
+    /** Pose name (e.g. STANDING, SNEAKING, SWIMMING) for rendering; null = STANDING. */
+    public final String pose;
 
     /** Used by SkinCache for player face; other entities use type for sprite. */
     public final UUID uuid;
@@ -74,7 +80,7 @@ public final class EntitySnapshot {
             String customName,
             double boundingWidth,
             double boundingHeight) {
-        this(type, relX, relY, relZ, yaw, uuid, isPlayer, onFire, invisible, customName, boundingWidth, boundingHeight, 0f, false, -1.0f, null, null, null);
+        this(type, relX, relY, relZ, yaw, 0f, null, uuid, isPlayer, onFire, invisible, customName, boundingWidth, boundingHeight, 0f, false, -1.0f, null, null, null);
     }
 
     /** Full constructor including hurt/death state for particle synthesis. */
@@ -93,10 +99,10 @@ public final class EntitySnapshot {
             double boundingHeight,
             float hurtProgress,
             boolean isDead) {
-        this(type, relX, relY, relZ, yaw, uuid, isPlayer, onFire, invisible, customName, boundingWidth, boundingHeight, hurtProgress, isDead, -1.0f, null, null, null);
+        this(type, relX, relY, relZ, yaw, 0f, null, uuid, isPlayer, onFire, invisible, customName, boundingWidth, boundingHeight, hurtProgress, isDead, -1.0f, null, null, null);
     }
 
-    /** Full constructor including AEC, dropped item, and projectile shooter. */
+    /** Constructor including AEC, dropped item, projectile shooter; pitch=0, pose=null. */
     public EntitySnapshot(
             EntityType type,
             double relX,
@@ -116,11 +122,38 @@ public final class EntitySnapshot {
             String aecEffectName,
             String droppedItemMaterial,
             UUID shooterUUID) {
+        this(type, relX, relY, relZ, yaw, 0f, null, uuid, isPlayer, onFire, invisible, customName, boundingWidth, boundingHeight, hurtProgress, isDead, aecRadius, aecEffectName, droppedItemMaterial, shooterUUID);
+    }
+
+    /** Full constructor including pitch, pose, AEC, dropped item, and projectile shooter. */
+    public EntitySnapshot(
+            EntityType type,
+            double relX,
+            double relY,
+            double relZ,
+            float yaw,
+            float pitch,
+            String pose,
+            UUID uuid,
+            boolean isPlayer,
+            boolean onFire,
+            boolean invisible,
+            String customName,
+            double boundingWidth,
+            double boundingHeight,
+            float hurtProgress,
+            boolean isDead,
+            float aecRadius,
+            String aecEffectName,
+            String droppedItemMaterial,
+            UUID shooterUUID) {
         this.type = type;
         this.relX = relX;
         this.relY = relY;
         this.relZ = relZ;
         this.yaw = yaw;
+        this.pitch = pitch;
+        this.pose = pose;
         this.uuid = uuid;
         this.isPlayer = isPlayer;
         this.onFire = onFire;

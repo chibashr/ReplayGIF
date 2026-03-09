@@ -34,7 +34,7 @@ For realistic block appearance (like in-game), you can bundle vanilla 1.21 block
 
 ### Entity and item textures from client JAR
 
-Entity sprites (zombie, creeper, fish, etc.) and item icons (dropped items in the scene) use vanilla textures when `client_jar_path` in `renderer.yml` points to a Minecraft client JAR (e.g. `.minecraft/versions/1.21/<version>.jar`). Subfolder paths (e.g. `entity/fish/`) are supported. Without the JAR, entities use bundled sprites or marker colors from `entity_bounds.json`; items use a gray fallback.
+Entity sprites (zombie, creeper, fish, etc.) and item icons (dropped items in the scene) use vanilla textures when `client_jar_path` in `renderer.yml` points to a Minecraft client JAR (e.g. `.minecraft/versions/1.21/<version>.jar`). Entity and item textures are discovered dynamically from the JAR; block textures fall back for block-as-item drops. Without the JAR, entities use bundled sprites or derived marker colors; items use a gray fallback. Entities render with yaw-based facing, pose scaling (sneaking, swimming, etc.), and frame-based bobbing for a more realistic appearance.
 
 - **outputs.yml** — Defines named output profiles; each profile lists one or more targets (e.g. Discord webhook URL, generic webhook, or filesystem path template). Edit when adding or changing where GIFs are sent or saved. Profile names are referenced from `triggers.yml`.
 

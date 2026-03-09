@@ -518,22 +518,26 @@ public class IsometricRenderer {
                 sprite = createColoredMarker(spriteW, spriteH, markerColor);
             }
 
-            BufferedImage scaled = scaleSprite(sprite, spriteW, spriteH);
+            double poseScaleH = e.isDead ? 1.0 : poseHeightScale(e.pose);
+            int poseSpriteH = (int) Math.round(spriteH * poseScaleH);
+            if (poseSpriteH < 1) poseSpriteH = 1;
+            BufferedImage scaled = scaleSprite(sprite, spriteW, poseSpriteH);
+            int bobOffsetY = (int) (Math.sin(frameIndex * 0.25) * 2);
             int left = screenX - spriteW / 2;
-            int top = (int) (screenY + tileHeight - spriteH);
+            int top = (int) (screenY + tileHeight - poseSpriteH + bobOffsetY);
             int drawLeft = left;
             int drawTop = top;
             int drawW = spriteW;
-            int drawH = spriteH;
+            int drawH = poseSpriteH;
 
             if (e.isDead) {
                 // Death tilt: rotate sprite 90° clockwise; draw with bottom-left at (screenX - spriteW/2, screenY)
                 AffineTransform prev = g.getTransform();
-                g.translate(screenX - spriteW / 2 - spriteH, screenY);
+                g.translate(screenX - spriteW / 2 - poseSpriteH, screenY);
                 g.rotate(-Math.PI / 2);
                 drawLeft = 0;
                 drawTop = 0;
-                drawW = spriteH;
+                drawW = poseSpriteH;
                 drawH = spriteW;
                 if (e.invisible) {
                     g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.4f));
@@ -541,13 +545,23 @@ public class IsometricRenderer {
                 g.drawImage(scaled, 0, 0, null);
                 g.setTransform(prev);
                 g.setComposite(AlphaComposite.SrcOver);
-                drawLeft = screenX - spriteW / 2 - spriteH;
+                drawLeft = screenX - spriteW / 2 - poseSpriteH;
                 drawTop = screenY;
             } else {
                 if (e.invisible) {
                     g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.4f));
                 }
-                g.drawImage(scaled, left, top, null);
+                double rotRad = Math.toRadians(-e.yaw);
+                if (Math.abs(rotRad) > 0.001) {
+                    AffineTransform prev = g.getTransform();
+                    g.translate(screenX, (int) (screenY + tileHeight + bobOffsetY));
+                    g.rotate(rotRad);
+                    g.translate(-spriteW / 2.0, -poseSpriteH);
+                    g.drawImage(scaled, 0, 0, null);
+                    g.setTransform(prev);
+                } else {
+                    g.drawImage(scaled, left, top, null);
+                }
                 g.setComposite(AlphaComposite.SrcOver);
             }
 
@@ -560,16 +574,26 @@ public class IsometricRenderer {
             }
 
             if (e.onFire && entitySpriteRegistry.getFireOverlay() != null) {
-                BufferedImage fire = scaleSprite(entitySpriteRegistry.getFireOverlay(), spriteW, spriteH);
+                BufferedImage fire = scaleSprite(entitySpriteRegistry.getFireOverlay(), spriteW, poseSpriteH);
                 g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.7f));
                 if (e.isDead) {
                     AffineTransform prev = g.getTransform();
-                    g.translate(screenX - spriteW / 2 - spriteH, screenY);
+                    g.translate(screenX - spriteW / 2 - poseSpriteH, screenY);
                     g.rotate(-Math.PI / 2);
                     g.drawImage(fire, 0, 0, null);
                     g.setTransform(prev);
                 } else {
-                    g.drawImage(fire, left, top, null);
+                    double rotRad = Math.toRadians(-e.yaw);
+                    if (Math.abs(rotRad) > 0.001) {
+                        AffineTransform prev = g.getTransform();
+                        g.translate(screenX, (int) (screenY + tileHeight + bobOffsetY));
+                        g.rotate(rotRad);
+                        g.translate(-spriteW / 2.0, -poseSpriteH);
+                        g.drawImage(fire, 0, 0, null);
+                        g.setTransform(prev);
+                    } else {
+                        g.drawImage(fire, left, top, null);
+                    }
                 }
                 g.setComposite(AlphaComposite.SrcOver);
             }
@@ -851,6 +875,17 @@ public class IsometricRenderer {
     private boolean isLiquid(short ordinal) {
         Material m = blockRegistry.getMaterial(ordinal);
         return m != null && LIQUID_MATERIALS.contains(m.name());
+    }
+
+    /** Height scale for pose (e.g. SNEAKING = shorter). Returns 1.0 for standing. */
+    private static double poseHeightScale(String pose) {
+        if (pose == null) return 1.0;
+        return switch (pose) {
+            case "SNEAKING", "CROUCHING" -> 0.833;  // 1.5/1.8 blocks
+            case "SWIMMING", "FALL_FLYING" -> 0.6;  // flatter
+            case "SLEEPING", "DYING" -> 0.3;
+            default -> 1.0;
+        };
     }
 
     private static Color withAlpha(Color c, int alpha) {

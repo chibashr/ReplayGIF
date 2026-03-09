@@ -19,6 +19,7 @@ import java.util.zip.ZipFile;
 public class ItemTextureCache {
 
     private static final String CLIENT_ITEM_PREFIX = "assets/minecraft/textures/item/";
+    private static final String CLIENT_BLOCK_PREFIX = "assets/minecraft/textures/block/";
     private static final String BUNDLED_ICON_PREFIX = "hud/item_icons/";
     private static final String ICON_SUFFIX = ".png";
 
@@ -74,15 +75,25 @@ public class ItemTextureCache {
         try {
             ZipFile zip = getClientJar();
             if (zip == null) return null;
-            String path = CLIENT_ITEM_PREFIX + materialLower + ICON_SUFFIX;
-            ZipEntry entry = zip.getEntry(path);
-            if (entry == null || entry.isDirectory()) return null;
-            try (InputStream is = zip.getInputStream(entry)) {
-                return ImageIO.read(is);
+            String itemPath = CLIENT_ITEM_PREFIX + materialLower + ICON_SUFFIX;
+            ZipEntry entry = zip.getEntry(itemPath);
+            if (entry != null && !entry.isDirectory()) {
+                try (InputStream is = zip.getInputStream(entry)) {
+                    BufferedImage img = ImageIO.read(is);
+                    if (img != null) return img;
+                }
+            }
+            String blockPath = CLIENT_BLOCK_PREFIX + materialLower + ICON_SUFFIX;
+            entry = zip.getEntry(blockPath);
+            if (entry != null && !entry.isDirectory()) {
+                try (InputStream is = zip.getInputStream(entry)) {
+                    return ImageIO.read(is);
+                }
             }
         } catch (Exception e) {
-            return null;
+            // fall through
         }
+        return null;
     }
 
     private ZipFile getClientJar() {

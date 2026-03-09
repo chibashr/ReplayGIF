@@ -339,6 +339,8 @@ public class SnapshotScheduler implements Runnable {
             double relY = ey - originY;
             double relZ = ez - originZ;
             float yaw = eloc.getYaw();
+            float pitch = eloc.getPitch();
+            String pose = entity.getPose() != null ? entity.getPose().name() : null;
             UUID uuid = entity.getUniqueId();
             boolean isPlayer = entity instanceof Player;
             boolean onFire = entity.getFireTicks() > 0;
@@ -400,6 +402,8 @@ public class SnapshotScheduler implements Runnable {
                     relY,
                     relZ,
                     yaw,
+                    pitch,
+                    pose,
                     uuid,
                     isPlayer,
                     onFire,
