@@ -18,6 +18,7 @@ import me.replaygif.renderer.BlockTextureRegistry;
 import me.replaygif.renderer.EntitySpriteRegistry;
 import me.replaygif.renderer.HurtParticleSynthesizer;
 import me.replaygif.renderer.IsometricRenderer;
+import me.replaygif.renderer.ItemTextureCache;
 import me.replaygif.renderer.SkinCache;
 import me.replaygif.trigger.DeathListener;
 import me.replaygif.trigger.DynamicListenerRegistry;
@@ -132,6 +133,7 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 configManager.getTileWidth(),
                 configManager.getTileHeight());
         BufferedImage[] crackStages = loadCrackStages();
+        ItemTextureCache itemTextureCache = new ItemTextureCache(this, configManager.getClientJarPath());
         IsometricRenderer isometricRenderer = new IsometricRenderer(
                 configManager.getVolumeSize(),
                 configManager.getTileWidth(),
@@ -143,7 +145,9 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 entitySpriteRegistry,
                 skinCache,
                 hurtParticleSynthesizer,
-                crackStages);
+                null,
+                crackStages,
+                itemTextureCache);
         getSLF4JLogger().info("IsometricRenderer ready.");
 
         // 7. GifEncoder

@@ -14,8 +14,10 @@ volume_size: 32
 # Exposes cave interiors; range 0–12. Default 4.
 cut_offset: 4
 
-# Path to Minecraft client jar for extracting entity textures (optional).
-# If absent or invalid, bundled stand-in sprites are used. Leave empty for stand-in only.
+# Path to Minecraft client jar for entity and item textures (optional).
+# Entity sprites (zombie, creeper, etc.) and item icons (HUD hotbar, dropped items) load
+# from assets/minecraft/textures/entity/ and textures/item/. If absent or invalid,
+# bundled stand-in sprites or gray fallbacks are used. Leave empty to disable.
 client_jar_path: ""
 
 # Whether to fetch and render player skins (face from skin sheet).

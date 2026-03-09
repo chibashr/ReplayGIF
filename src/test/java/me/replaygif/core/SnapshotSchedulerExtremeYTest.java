@@ -7,6 +7,8 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,6 +105,16 @@ class SnapshotSchedulerExtremeYTest {
         when(player.getGameMode()).thenReturn(GameMode.SURVIVAL);
         when(player.getHealth()).thenReturn(20.0);
         when(player.getFoodLevel()).thenReturn(20);
+        when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        PlayerInventory inv = mock(PlayerInventory.class);
+        ItemStack air = new ItemStack(Material.AIR);
+        when(inv.getItemInMainHand()).thenReturn(air);
+        when(inv.getItemInOffHand()).thenReturn(air);
+        when(inv.getHelmet()).thenReturn(air);
+        when(inv.getChestplate()).thenReturn(air);
+        when(inv.getLeggings()).thenReturn(air);
+        when(inv.getBoots()).thenReturn(air);
+        when(player.getInventory()).thenReturn(inv);
         return player;
     }
 

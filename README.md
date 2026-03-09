@@ -21,7 +21,7 @@ All config files live in `plugins/ReplayGif/`. The bundled files are self-docume
 
 - **config.yml** — Core behaviour: buffer length (`buffer_seconds`), capture rate (`fps`), spectator capture window and pause (`spectator_capture_seconds`), size of the render thread pool (`async_threads`), whether API/event triggers are allowed (`allow_api_triggers`), and the inbound webhook server (enabled, port, secret). Edit when tuning performance or enabling the webhook or external API triggers.
 
-- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), optional path to a Minecraft client JAR for entity textures (`client_jar_path`), player skin rendering and cache TTL, the block colors file name, and whether to use bundled 1.21 block textures (`block_textures_enabled`). Edit when changing how the GIF looks or where assets are loaded from.
+- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), optional path to a Minecraft client JAR for entity and item textures (`client_jar_path`), player skin rendering and cache TTL, the block colors file name, and whether to use bundled 1.21 block textures (`block_textures_enabled`). Edit when changing how the GIF looks or where assets are loaded from.
 
 ### Bundled 1.21 block textures
 
@@ -31,6 +31,10 @@ For realistic block appearance (like in-game), you can bundle vanilla 1.21 block
 2. Run: `./gradlew extractBlockTextures -PclientJar=/path/to/1.21.jar` (Windows: `gradlew.bat extractBlockTextures -PclientJar=C:\path\to\1.21.jar`).
 3. Rebuild the plugin: `./gradlew jar`. The extracted textures are included in the JAR.
 4. Ensure `block_textures_enabled: true` in `renderer.yml` (default).
+
+### Entity and item textures from client JAR
+
+Entity sprites (zombie, creeper, etc.) and item icons (dropped items in the scene) use vanilla textures when `client_jar_path` in `renderer.yml` points to a Minecraft client JAR (e.g. `.minecraft/versions/1.21/<version>.jar`). Without it, entities use bundled stand-in sprites and items use a gray fallback.
 
 - **outputs.yml** — Defines named output profiles; each profile lists one or more targets (e.g. Discord webhook URL, generic webhook, or filesystem path template). Edit when adding or changing where GIFs are sent or saved. Profile names are referenced from `triggers.yml`.
 

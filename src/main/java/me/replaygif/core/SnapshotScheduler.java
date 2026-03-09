@@ -24,6 +24,7 @@ import org.bukkit.util.BoundingBox;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -233,7 +234,15 @@ public class SnapshotScheduler implements Runnable {
 
     private List<BossBarRecord> captureBossBars(Player player) {
         List<BossBarRecord> bars = new ArrayList<>();
-        var it = Bukkit.getBossBars();
+        Iterator<? extends BossBar> it;
+        try {
+            it = Bukkit.getBossBars();
+        } catch (Exception e) {
+            return List.of();
+        }
+        if (it == null) {
+            return List.of();
+        }
         while (it.hasNext()) {
             BossBar bar = it.next();
             if (bar.getPlayers().contains(player)) {
