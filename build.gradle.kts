@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "me.replaygif"
-version = "0.0.3"
+version = "0.0.4"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
