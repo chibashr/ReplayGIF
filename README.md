@@ -27,7 +27,7 @@ All config files live in `plugins/ReplayGif/`. The bundled files are self-docume
 
 Textures load in this order: `resource_pack_path` → `client_jar_path` → Mojang cache (downloaded on first load) → bundled.
 
-- **resource_pack_path**: Path to a Minecraft resource pack folder or .zip. Checked first. Use for custom packs (Faithful, BlueMap packs, etc.). Leave empty to skip.
+- **resource_pack_path**: Path relative to plugin data folder (default `packs` = `plugins/ReplayGif/packs/`). Drop .zip resource packs in that folder; the first one found is used. Or set a specific file (e.g. `packs/Faithful.zip`). Leave empty to skip.
 - **client_jar_path**: Path to a Minecraft 1.21+ client JAR for entity and item textures. Leave empty to try Mojang cache or bundled.
 - **download_assets_version**: When both paths above are empty, item/block textures are downloaded from Mojang on first load and cached to `plugins/ReplayGif/texture_cache/`. Set version (e.g. `1.21`). Requires outbound HTTPS.
 

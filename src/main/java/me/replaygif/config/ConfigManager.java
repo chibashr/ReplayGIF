@@ -234,7 +234,7 @@ public class ConfigManager {
     }
 
     public String getResourcePackPath() {
-        return getString(rendererConfig, "resource_pack_path", "", RENDERER);
+        return getString(rendererConfig, "resource_pack_path", "packs", RENDERER);
     }
 
     public String getClientJarPath() {

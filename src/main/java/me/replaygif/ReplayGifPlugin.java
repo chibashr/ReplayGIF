@@ -43,8 +43,10 @@ import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.imageio.ImageIO;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
@@ -89,6 +91,7 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         configManager = new ConfigManager(this);
         configManager.saveDefaultConfigs();
         configManager.load();
+        new File(getDataFolder(), "packs").mkdirs();
         // (ConfigManager.load() logs "Config loaded and validated.")
 
         // 2. BlockRegistry
@@ -138,14 +141,15 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 configManager.getTileHeight());
         BufferedImage[] crackStages = loadCrackStages();
         Path mojangCacheDir = getDataFolder().toPath().resolve("texture_cache").resolve("items");
-        boolean needMojangDownload = configManager.getResourcePackPath().isBlank()
+        String resourcePackPath = resolveResourcePackPath(configManager.getResourcePackPath());
+        boolean needMojangDownload = resourcePackPath == null
                 && configManager.getClientJarPath().isBlank();
         if (needMojangDownload) {
             MojangAssetDownloader downloader = new MojangAssetDownloader(this, configManager.getDownloadAssetsVersion());
             downloader.ensureTexturesAsync(r -> getServer().getScheduler().runTaskAsynchronously(this, r));
         }
         ItemTextureCache itemTextureCache = new ItemTextureCache(this,
-                configManager.getResourcePackPath(),
+                resourcePackPath,
                 configManager.getClientJarPath(),
                 mojangCacheDir);
         HudRenderer hudRenderer = buildHudRenderer(itemTextureCache);
@@ -353,6 +357,38 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
             getSLF4JLogger().warn("HUD resources failed to load, using minimal HUD: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Resolves resource_pack_path: relative to plugin data folder; when it's a directory,
+     * finds the first .zip inside and returns its path. Returns null if path is empty or invalid.
+     */
+    private String resolveResourcePackPath(String configPath) {
+        if (configPath == null || configPath.isBlank()) {
+            return null;
+        }
+        String trimmed = configPath.trim();
+        File base = getDataFolder();
+        File resolved = new File(trimmed).isAbsolute() ? new File(trimmed) : new File(base, trimmed);
+        if (!resolved.exists()) {
+            return null;
+        }
+        if (resolved.isDirectory()) {
+            File[] zips = resolved.listFiles((dir, name) -> name.toLowerCase().endsWith(".zip"));
+            if (zips != null && zips.length > 0) {
+                java.util.Arrays.sort(zips, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                return zips[0].getAbsolutePath();
+            }
+            if (Files.isDirectory(resolved.toPath().resolve("assets/minecraft/textures/item"))
+                    || Files.isDirectory(resolved.toPath().resolve("assets/minecraft/textures/block"))) {
+                return resolved.getAbsolutePath();
+            }
+            return null;
+        }
+        if (resolved.getName().toLowerCase().endsWith(".zip")) {
+            return resolved.getAbsolutePath();
+        }
+        return null;
     }
 
     /** Loads crack_stage_0.png through crack_stage_9.png from plugin resources. Returns null if any fail. */
