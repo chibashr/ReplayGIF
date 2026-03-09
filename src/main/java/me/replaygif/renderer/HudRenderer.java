@@ -123,6 +123,7 @@ public final class HudRenderer {
         if (dead) {
             drawDeathIndicator(g2d, imageWidth, imageHeight);
         } else {
+            drawArmorSlots(g2d, snapshot, imageWidth, imageHeight);
             drawHotbar(g2d, snapshot, imageWidth, imageHeight, frameIndex);
         }
         int barHeight = Math.max(6, tileHeight / 2);
@@ -294,51 +295,89 @@ public final class HudRenderer {
         }
     }
 
+    private void drawArmorSlots(Graphics2D g, WorldSnapshot snapshot, int imageWidth, int imageHeight) {
+        int slotSize = Math.max(8, tileWidth - 2);
+        int spacing = 2;
+        int totalWidth = 4 * slotSize + 3 * spacing;
+        int x = (imageWidth - totalWidth) / 2;
+        int y = imageHeight - tileHeight - slotSize - 8;
+        if (y < 0) return;
+        String[] armorItems = {snapshot.helmetItem, snapshot.chestplateItem, snapshot.leggingsItem, snapshot.bootsItem};
+        for (int i = 0; i < 4; i++) {
+            int sx = x + i * (slotSize + spacing);
+            g.setColor(HOTBAR_BORDER);
+            g.drawRect(sx - 1, y - 1, slotSize + 2, slotSize + 2);
+            String item = armorItems[i];
+            if (item != null) {
+                String material = ItemSerializer.getMaterialName(item);
+                Optional<BufferedImage> tex = material != null ? itemTextureCache.getTexture(material) : Optional.empty();
+                if (tex.isPresent()) {
+                    g.drawImage(tex.get(), sx, y, slotSize, slotSize, null);
+                } else {
+                    g.setColor(new Color(0x888888));
+                    g.fillRect(sx, y, slotSize, slotSize);
+                }
+            }
+        }
+    }
+
     private void drawHotbar(Graphics2D g, WorldSnapshot snapshot, int imageWidth, int imageHeight, int frameIndex) {
         int slotSize = tileWidth + 4;
         int y = imageHeight - tileHeight;
-        int mainX = (imageWidth - slotSize) / 2;
-        g.setColor(HOTBAR_BORDER);
-        g.drawRect(mainX - 2, y - 2, slotSize + 4, slotSize + 4);
-        g.drawRect(mainX - 1, y - 1, slotSize + 2, slotSize + 2);
-        String mainItem = snapshot.mainHandItem;
-        if (mainItem != null) {
-            String material = ItemSerializer.getMaterialName(mainItem);
-            Optional<BufferedImage> tex = material != null ? itemTextureCache.getTexture(material) : Optional.empty();
-            if (tex.isPresent()) {
-                g.drawImage(tex.get(), mainX, y, tileWidth, tileWidth, null);
+        List<String> hotbar = snapshot.hotbarItems;
+        int slotCount = (hotbar != null && hotbar.size() == 9) ? 9 : 1;
+        int hotbarWidth = slotCount * slotSize + (slotCount - 1) * 2;
+        int mainX = (imageWidth - hotbarWidth) / 2;
+
+        if (slotCount == 9) {
+            for (int i = 0; i < 9; i++) {
+                int sx = mainX + i * (slotSize + 2);
+                boolean selected = (i == snapshot.heldItemSlot);
+                g.setColor(HOTBAR_BORDER);
+                g.drawRect(sx - (selected ? 2 : 1), y - (selected ? 2 : 1),
+                        slotSize + (selected ? 4 : 2), slotSize + (selected ? 4 : 2));
+                String item = hotbar.get(i);
+                if (item != null) {
+                    drawItemInSlot(g, item, sx, y, tileWidth, tileWidth, frameIndex);
+                } else {
+                    g.setColor(new Color(0x888888));
+                    g.fillRect(sx, y, tileWidth, tileWidth);
+                }
+            }
+        } else {
+            g.setColor(HOTBAR_BORDER);
+            g.drawRect(mainX - 2, y - 2, slotSize + 4, slotSize + 4);
+            g.drawRect(mainX - 1, y - 1, slotSize + 2, slotSize + 2);
+            String mainItem = snapshot.mainHandItem;
+            if (mainItem != null) {
+                drawItemInSlot(g, mainItem, mainX, y, tileWidth, tileWidth, frameIndex);
             } else {
                 g.setColor(new Color(0x888888));
                 g.fillRect(mainX, y, tileWidth, tileWidth);
             }
-            if (ItemSerializer.isEnchanted(mainItem)) {
-                drawEnchantmentGlint(g, mainX, y, tileWidth, tileWidth, frameIndex);
-            }
-            g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 4));
-            g.setColor(Color.WHITE);
-            String label = material != null ? truncate(material, tileWidth, g) : "";
-            if (!label.isEmpty()) {
-                int lw = g.getFontMetrics().stringWidth(label);
-                g.drawString(label, mainX + (tileWidth - lw) / 2, y + tileWidth + 4);
-            }
         }
+
         if (snapshot.offHandItem != null) {
             int smallSize = (int) (tileWidth * 0.75);
-            int offX = mainX + slotSize + 4;
+            int offX = mainX + hotbarWidth + 4;
             int offY = y + (tileWidth - smallSize) / 2;
             g.setColor(HOTBAR_BORDER);
             g.drawRect(offX - 1, offY - 1, smallSize + 2, smallSize + 2);
-            String material = ItemSerializer.getMaterialName(snapshot.offHandItem);
-            Optional<BufferedImage> tex = material != null ? itemTextureCache.getTexture(material) : Optional.empty();
-            if (tex.isPresent()) {
-                g.drawImage(tex.get(), offX, offY, smallSize, smallSize, null);
-            } else {
-                g.setColor(new Color(0x888888));
-                g.fillRect(offX, offY, smallSize, smallSize);
-            }
-            if (ItemSerializer.isEnchanted(snapshot.offHandItem)) {
-                drawEnchantmentGlint(g, offX, offY, smallSize, smallSize, frameIndex);
-            }
+            drawItemInSlot(g, snapshot.offHandItem, offX, offY, smallSize, smallSize, frameIndex);
+        }
+    }
+
+    private void drawItemInSlot(Graphics2D g, String item, int x, int y, int w, int h, int frameIndex) {
+        String material = ItemSerializer.getMaterialName(item);
+        Optional<BufferedImage> tex = material != null ? itemTextureCache.getTexture(material) : Optional.empty();
+        if (tex.isPresent()) {
+            g.drawImage(tex.get(), x, y, w, h, null);
+        } else {
+            g.setColor(new Color(0x888888));
+            g.fillRect(x, y, w, h);
+        }
+        if (ItemSerializer.isEnchanted(item)) {
+            drawEnchantmentGlint(g, x, y, w, h, frameIndex);
         }
     }
 

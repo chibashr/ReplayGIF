@@ -233,8 +233,17 @@ public class ConfigManager {
         return getInt(rendererConfig, "cut_offset", 4, 0, 12, RENDERER);
     }
 
+    public String getResourcePackPath() {
+        return getString(rendererConfig, "resource_pack_path", "", RENDERER);
+    }
+
     public String getClientJarPath() {
         return getString(rendererConfig, "client_jar_path", "", RENDERER);
+    }
+
+    /** Minecraft version for Mojang asset download (e.g. "1.21"). Used when no other texture source. */
+    public String getDownloadAssetsVersion() {
+        return getString(rendererConfig, "download_assets_version", "1.21", RENDERER);
     }
 
     public boolean getSkinRenderingEnabled() {

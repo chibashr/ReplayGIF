@@ -21,20 +21,28 @@ All config files live in `plugins/ReplayGif/`. The bundled files are self-docume
 
 - **config.yml** — Core behaviour: buffer length (`buffer_seconds`), capture rate (`fps`), spectator capture window and pause (`spectator_capture_seconds`), size of the render thread pool (`async_threads`), whether API/event triggers are allowed (`allow_api_triggers`), and the inbound webhook server (enabled, port, secret). Edit when tuning performance or enabling the webhook or external API triggers.
 
-- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), optional path to a Minecraft client JAR for entity and item textures (`client_jar_path`), player skin rendering and cache TTL, the block colors file name, and whether to use bundled 1.21 block textures (`block_textures_enabled`). GIF background (`gif_background`: `transparent`, `white`, `black`, or hex), and HUD appearance (`hud_enabled`, `hud_opacity`). Edit when changing how the GIF looks or where assets are loaded from.
+- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), texture paths (`resource_pack_path`, `client_jar_path`), Mojang asset download version (`download_assets_version`), player skin rendering and cache TTL, the block colors file name, and whether to use bundled 1.21 block textures (`block_textures_enabled`). GIF background (`gif_background`: `transparent`, `white`, `black`, or hex), and HUD appearance (`hud_enabled`, `hud_opacity`). Edit when changing how the GIF looks or where assets are loaded from.
 
-### Bundled 1.21 block textures
+### Texture loading (items, blocks, entities)
 
-For realistic block appearance (like in-game), you can bundle vanilla 1.21 block textures into the plugin. Without them, blocks are drawn using solid colors from `block_colors.json`.
+Textures load in this order: `resource_pack_path` → `client_jar_path` → Mojang cache (downloaded on first load) → bundled.
+
+- **resource_pack_path**: Path to a Minecraft resource pack folder or .zip. Checked first. Use for custom packs (Faithful, BlueMap packs, etc.). Leave empty to skip.
+- **client_jar_path**: Path to a Minecraft 1.21+ client JAR for entity and item textures. Leave empty to try Mojang cache or bundled.
+- **download_assets_version**: When both paths above are empty, item/block textures are downloaded from Mojang on first load and cached to `plugins/ReplayGif/texture_cache/`. Set version (e.g. `1.21`). Requires outbound HTTPS.
+
+The HUD shows full 9-slot hotbar and 4 armor slots with actual item icons when textures are available.
+
+### Bundled textures (build-time extraction)
+
+For offline use or faster startup, bundle textures into the plugin JAR:
 
 1. Obtain a Minecraft 1.21 client JAR (e.g. from `.minecraft/versions/1.21/<version>.jar`).
-2. Run: `./gradlew extractBlockTextures -PclientJar=/path/to/1.21.jar` (Windows: `gradlew.bat extractBlockTextures -PclientJar=C:\path\to\1.21.jar`).
-3. Rebuild the plugin: `./gradlew jar`. The extracted textures are included in the JAR.
+2. Run: `./gradlew extractBlockTextures extractItemTextures extractEntityTextures -PclientJar=/path/to/1.21.jar` (or `extractAllTextures` for all three).
+3. Rebuild: `./gradlew jar`. Textures are included in the JAR.
 4. Ensure `block_textures_enabled: true` in `renderer.yml` (default).
 
-### Entity and item textures from client JAR
-
-Entity sprites (zombie, creeper, fish, etc.) and item icons (dropped items in the scene) use vanilla textures when `client_jar_path` in `renderer.yml` points to a Minecraft client JAR (e.g. `.minecraft/versions/1.21/<version>.jar`). Entity and item textures are discovered dynamically from the JAR; block textures fall back for block-as-item drops. Without the JAR, entities use bundled sprites or derived marker colors; items use a gray fallback. Entities render with yaw-based facing, pose scaling (sneaking, swimming, etc.), and frame-based bobbing for a more realistic appearance.
+Without bundled or configured textures: blocks use `block_colors.json` solid colors; entities use bundled sprites or marker colors; items use gray fallback.
 
 - **outputs.yml** — Defines named output profiles; each profile lists one or more targets (e.g. Discord webhook URL, generic webhook, or filesystem path template). Edit when adding or changing where GIFs are sent or saved. Profile names are referenced from `triggers.yml`.
 
@@ -148,7 +156,7 @@ These are common misconfigurations and how they appear in the console.
    Cause: The requested time window (trigger time ± pre/post seconds) contained no frames in the player’s buffer. Typical causes: buffer_seconds or FPS too low so the window is not covered, trigger fired before enough time had passed after the player joined, or clock/trigger timestamp mismatch. Increase `buffer_seconds` or ensure the player has been online and in range of the scheduler for at least the pre window before the trigger.
 
 6. **Entities as gray or colored boxes; player as oversized face**  
-   Cause: Missing or invalid `client_jar_path` (for entity textures), or skin fetch failing. Configure `client_jar_path` in `renderer.yml` to a 1.21+ client JAR for proper entity sprites (fish, etc.). For players, skins are fetched from Mojang; ensure `skin_rendering_enabled: true` and outbound HTTPS works. Players render as full-body figures (head, body, limbs) from their skin; if skins fail to load, a placeholder body is used.
+   Cause: Missing textures. Configure `resource_pack_path` or `client_jar_path` in `renderer.yml`, or run `extractItemTextures` and `extractEntityTextures` to bundle them. When both paths are empty and no bundled textures exist, Mojang download runs on first load (requires HTTPS). For player skins, ensure `skin_rendering_enabled: true` and outbound HTTPS works.
 
 If the console shows `webhook_server.enabled is true but webhook_server.secret is still 'changeme'`, change the secret in production to avoid unauthorized use.
 

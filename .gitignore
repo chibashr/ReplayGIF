@@ -19,3 +19,6 @@ gradle/wrapper/gradle-*/
 
 # Bundled block textures (extract from 1.21 client JAR; see block_textures/README.txt)
 src/main/resources/block_textures/*.png
+
+# Bundled item textures (run extractItemTextures -PclientJar=... to populate)
+src/main/resources/hud/item_icons/*.png

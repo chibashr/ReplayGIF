@@ -44,6 +44,7 @@ class HudRendererTest {
                 maxHealth, xpProgress, xpLevel,
                 mainHand, offHand, helmet, chestplate, leggings, boots,
                 potionEffects != null ? potionEffects : List.of(),
+                null, 4,
                 -999999, -999999, -999999, -1,
                 null, List.of(), List.of());
     }
@@ -55,6 +56,7 @@ class HudRendererTest {
                 "minecraft:overworld", "world",
                 new short[1], 1, List.of(), false,
                 20f, 0f, 0, null, null, null, null, null, null, List.of(),
+                null, 4,
                 -999999, -999999, -999999, -1,
                 actionBarText, activeBossBars != null ? activeBossBars : List.of(), List.of());
     }

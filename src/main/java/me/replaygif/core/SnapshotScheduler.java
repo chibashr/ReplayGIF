@@ -18,6 +18,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
 
@@ -202,6 +203,24 @@ public class SnapshotScheduler implements Runnable {
         String leggingsItem = ItemSerializer.serialize(inv.getLeggings());
         String bootsItem = ItemSerializer.serialize(inv.getBoots());
 
+        List<String> hotbarItems = new ArrayList<>(9);
+        ItemStack[] contents = inv.getStorageContents();
+        for (int i = 0; i < 9; i++) {
+            hotbarItems.add(ItemSerializer.serialize(i < contents.length ? contents[i] : null));
+        }
+        int heldItemSlot = inv.getHeldItemSlot();
+
+        float playerMaxHealth = (float) player.getMaxHealth();
+        float playerXpProgress = player.getExp();
+        int playerXpLevel = player.getLevel();
+        List<String> activePotionEffects = new ArrayList<>();
+        for (PotionEffect e : player.getActivePotionEffects()) {
+            PotionEffectType type = e.getType();
+            if (type != null && type.getName() != null) {
+                activePotionEffects.add(type.getName().toLowerCase(java.util.Locale.ROOT));
+            }
+        }
+
         return new WorldSnapshot(
                 timestamp,
                 originX,
@@ -217,18 +236,23 @@ public class SnapshotScheduler implements Runnable {
                 volumeSize,
                 entities,
                 inSpectator,
-                actionBarText,
-                activeBossBars,
-                breakingBlockX,
-                breakingBlockY,
-                breakingBlockZ,
-                breakingStage,
+                playerMaxHealth,
+                playerXpProgress,
+                playerXpLevel,
                 mainHandItem,
                 offHandItem,
                 helmetItem,
                 chestplateItem,
                 leggingsItem,
                 bootsItem,
+                hotbarItems,
+                heldItemSlot,
+                breakingBlockX,
+                breakingBlockY,
+                breakingBlockZ,
+                breakingStage,
+                actionBarText,
+                activeBossBars,
                 attacksThisFrame);
     }
 

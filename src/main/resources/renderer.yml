@@ -14,11 +14,19 @@ volume_size: 32
 # Exposes cave interiors; range 0–12. Default 4.
 cut_offset: 4
 
+# Path to Minecraft resource pack (folder or .zip) for item/block/entity textures (optional).
+# Checked first. Use for custom packs (Faithful, etc.) or BlueMap packs. Leave empty to skip.
+resource_pack_path: ""
+
 # Path to Minecraft client jar for entity and item textures (optional).
 # Entity sprites (zombie, creeper, etc.) and item icons (HUD hotbar, dropped items) load
 # from assets/minecraft/textures/entity/ and textures/item/. If absent or invalid,
-# bundled stand-in sprites or gray fallbacks are used. Leave empty to disable.
+# Mojang cache or bundled textures are used. Leave empty to try cache/bundled.
 client_jar_path: ""
+
+# When both resource_pack_path and client_jar_path are empty, textures are downloaded from
+# Mojang on first load and cached to plugins/ReplayGif/texture_cache/. Set version (e.g. 1.21).
+download_assets_version: "1.21"
 
 # Whether to fetch and render player skins (face from skin sheet).
 # Requires outbound HTTPS to sessionserver.mojang.com. Disable for offline servers.

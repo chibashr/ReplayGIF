@@ -106,8 +106,16 @@ class SnapshotSchedulerExtremeYTest {
         when(player.getHealth()).thenReturn(20.0);
         when(player.getFoodLevel()).thenReturn(20);
         when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        when(player.getMaxHealth()).thenReturn(20.0);
+        when(player.getExp()).thenReturn(0f);
+        when(player.getLevel()).thenReturn(0);
+        when(player.getActivePotionEffects()).thenReturn(List.of());
         PlayerInventory inv = mock(PlayerInventory.class);
         ItemStack air = new ItemStack(Material.AIR);
+        ItemStack[] storage = new ItemStack[36];
+        java.util.Arrays.fill(storage, air);
+        when(inv.getStorageContents()).thenReturn(storage);
+        when(inv.getHeldItemSlot()).thenReturn(4);
         when(inv.getItemInMainHand()).thenReturn(air);
         when(inv.getItemInOffHand()).thenReturn(air);
         when(inv.getHelmet()).thenReturn(air);

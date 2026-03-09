@@ -21,6 +21,7 @@ import me.replaygif.renderer.HudResources;
 import me.replaygif.renderer.HurtParticleSynthesizer;
 import me.replaygif.renderer.IsometricRenderer;
 import me.replaygif.renderer.ItemTextureCache;
+import me.replaygif.renderer.MojangAssetDownloader;
 import me.replaygif.renderer.SkinCache;
 import me.replaygif.trigger.DeathListener;
 import me.replaygif.trigger.DynamicListenerRegistry;
@@ -44,6 +45,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -135,7 +137,17 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 configManager.getTileWidth(),
                 configManager.getTileHeight());
         BufferedImage[] crackStages = loadCrackStages();
-        ItemTextureCache itemTextureCache = new ItemTextureCache(this, configManager.getClientJarPath());
+        Path mojangCacheDir = getDataFolder().toPath().resolve("texture_cache").resolve("items");
+        boolean needMojangDownload = configManager.getResourcePackPath().isBlank()
+                && configManager.getClientJarPath().isBlank();
+        if (needMojangDownload) {
+            MojangAssetDownloader downloader = new MojangAssetDownloader(this, configManager.getDownloadAssetsVersion());
+            downloader.ensureTexturesAsync(r -> getServer().getScheduler().runTaskAsynchronously(this, r));
+        }
+        ItemTextureCache itemTextureCache = new ItemTextureCache(this,
+                configManager.getResourcePackPath(),
+                configManager.getClientJarPath(),
+                mojangCacheDir);
         HudRenderer hudRenderer = buildHudRenderer(itemTextureCache);
         IsometricRenderer isometricRenderer = new IsometricRenderer(
                 configManager.getVolumeSize(),

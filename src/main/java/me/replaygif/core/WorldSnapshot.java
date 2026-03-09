@@ -67,6 +67,12 @@ public final class WorldSnapshot {
     /** Potion effect type names (e.g. "absorption"). Immutable. Never null. */
     public final List<String> activePotionEffects;
 
+    /** Full hotbar slots 0–8 (ItemSerializer format). Null = legacy (use mainHandItem only). */
+    public final List<String> hotbarItems;
+
+    /** Selected hotbar slot index 0–8. Ignored when hotbarItems is null. */
+    public final int heldItemSlot;
+
     /** Block position being broken. -999999 if not breaking. */
     public final int breakingBlockX;
     public final int breakingBlockY;
@@ -221,6 +227,7 @@ public final class WorldSnapshot {
                 playerHealth, playerFood, dimension, worldName, blocks, volumeSize,
                 entities, inSpectator,
                 20f, 0f, 0, mainHandItem, offHandItem, helmetItem, chestplateItem, leggingsItem, bootsItem, List.of(),
+                null, 4,
                 breakingBlockX, breakingBlockY, breakingBlockZ, breakingStage,
                 actionBarText, activeBossBars, List.of());
     }
@@ -259,6 +266,7 @@ public final class WorldSnapshot {
 
     /**
      * Constructor for capture with equipment (ItemSerializer format; :enchanted appended when applicable) and attacks.
+     * Uses default maxHealth/xp and legacy single-slot hotbar. Use the hotbar constructor for full hotbar.
      */
     public WorldSnapshot(
             long timestamp,
@@ -292,11 +300,62 @@ public final class WorldSnapshot {
                 playerHealth, playerFood, dimension, worldName, blocks, volumeSize,
                 entities, inSpectator,
                 20f, 0f, 0, mainHandItem, offHandItem, helmetItem, chestplateItem, leggingsItem, bootsItem, List.of(),
+                null, 4,
                 breakingBlockX, breakingBlockY, breakingBlockZ, breakingStage,
                 actionBarText, activeBossBars, attacksThisFrame);
     }
 
-    /** Full constructor including HUD fields. */
+    /**
+     * Constructor for capture with full hotbar, armor, HUD fields, and attacks.
+     */
+    public WorldSnapshot(
+            long timestamp,
+            int originX,
+            int originY,
+            int originZ,
+            float playerYaw,
+            float playerPitch,
+            float playerHealth,
+            int playerFood,
+            String dimension,
+            String worldName,
+            short[] blocks,
+            int volumeSize,
+            List<EntitySnapshot> entities,
+            boolean inSpectator,
+            float playerMaxHealth,
+            float playerXpProgress,
+            int playerXpLevel,
+            String mainHandItem,
+            String offHandItem,
+            String helmetItem,
+            String chestplateItem,
+            String leggingsItem,
+            String bootsItem,
+            List<String> hotbarItems,
+            int heldItemSlot,
+            int breakingBlockX,
+            int breakingBlockY,
+            int breakingBlockZ,
+            int breakingStage,
+            String actionBarText,
+            List<BossBarRecord> activeBossBars,
+            List<AttackRecord> attacksThisFrame) {
+        this(timestamp, originX, originY, originZ, playerYaw, playerPitch,
+                playerHealth, playerFood, dimension, worldName, blocks, volumeSize,
+                entities, inSpectator,
+                playerMaxHealth, playerXpProgress, playerXpLevel,
+                mainHandItem, offHandItem, helmetItem, chestplateItem, leggingsItem, bootsItem,
+                List.of(),
+                hotbarItems, heldItemSlot,
+                breakingBlockX, breakingBlockY, breakingBlockZ, breakingStage,
+                actionBarText, activeBossBars, attacksThisFrame);
+    }
+
+    /**
+     * Full constructor for capture with hotbar, armor, HUD fields.
+     * hotbarItems and heldItemSlot may be null/0 for legacy snapshots.
+     */
     public WorldSnapshot(
             long timestamp,
             int originX,
@@ -322,6 +381,8 @@ public final class WorldSnapshot {
             String leggingsItem,
             String bootsItem,
             List<String> activePotionEffects,
+            List<String> hotbarItems,
+            int heldItemSlot,
             int breakingBlockX,
             int breakingBlockY,
             int breakingBlockZ,
@@ -353,6 +414,10 @@ public final class WorldSnapshot {
         this.leggingsItem = leggingsItem;
         this.bootsItem = bootsItem;
         this.activePotionEffects = activePotionEffects != null ? List.copyOf(activePotionEffects) : List.of();
+        this.hotbarItems = (hotbarItems != null && hotbarItems.size() == 9)
+                ? Collections.unmodifiableList(new java.util.ArrayList<>(hotbarItems))
+                : null;
+        this.heldItemSlot = Math.max(0, Math.min(8, heldItemSlot));
         this.breakingBlockX = breakingBlockX;
         this.breakingBlockY = breakingBlockY;
         this.breakingBlockZ = breakingBlockZ;
