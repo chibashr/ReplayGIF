@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -132,5 +133,48 @@ class BlockColorMapTest {
         assertNotNull(obj);
         assertEquals(blockRegistry.getOrdinalCount(), obj.size(),
                 "Generated file must have one entry per block material");
+    }
+
+    /** Diagnostic: print materials using default gray (no entry in defaults). Run with target API to get gap list. */
+    @Test
+    void diag_printMaterialsWithDefaultGray() throws IOException {
+        BlockColorMap map = createBlockColorMap(dataFolder, false);
+        java.util.List<String> gaps = map.getMaterialsWithDefaultGray(blockRegistry);
+        java.util.Collections.sort(gaps);
+        System.out.println("[ReplayGif diag] Block colors: " + gaps.size() + " material(s) with no entry (fallback #808080).");
+        for (String name : gaps) {
+            System.out.println("[ReplayGif diag]   " + name);
+        }
+        // When block_colors_defaults.json is complete for this API version, gaps must be empty
+        assertTrue(gaps.isEmpty(), "block_colors_defaults.json should have an entry for every block material; gaps: " + String.join(", ", gaps));
+    }
+
+    /** One-off: generate block_colors_defaults.json with heuristic colors for all block materials. */
+    @Test
+    void generateBlockColorsDefaults() throws IOException {
+        java.util.Map<String, String> out = new java.util.TreeMap<>();
+        try (InputStream in = getClass().getResourceAsStream("/block_colors_defaults.json")) {
+            if (in != null) {
+                try (java.io.Reader r = new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8)) {
+                    java.util.Map<?, ?> existing = new com.google.gson.Gson().fromJson(r, new com.google.gson.reflect.TypeToken<java.util.Map<String, String>>() {}.getType());
+                    if (existing != null) {
+                        for (Map.Entry<?, ?> e : existing.entrySet()) {
+                            if (e.getKey() != null && e.getValue() != null) {
+                                out.put(e.getKey().toString(), e.getValue().toString());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < blockRegistry.getOrdinalCount(); i++) {
+            String name = blockRegistry.getMaterial((short) i).name();
+            out.putIfAbsent(name, BlockColorHeuristic.hexFor(name));
+        }
+        String json = new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(out);
+        java.nio.file.Path dest = java.nio.file.Paths.get("build", "block_colors_defaults_generated.json");
+        Files.createDirectories(dest.getParent());
+        Files.writeString(dest, json, java.nio.charset.StandardCharsets.UTF_8);
+        System.out.println("[ReplayGif] Wrote " + dest.toAbsolutePath() + " with " + out.size() + " entries.");
     }
 }

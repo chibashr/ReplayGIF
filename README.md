@@ -21,7 +21,16 @@ All config files live in `plugins/ReplayGif/`. The bundled files are self-docume
 
 - **config.yml** — Core behaviour: buffer length (`buffer_seconds`), capture rate (`fps`), spectator capture window and pause (`spectator_capture_seconds`), size of the render thread pool (`async_threads`), whether API/event triggers are allowed (`allow_api_triggers`), and the inbound webhook server (enabled, port, secret). Edit when tuning performance or enabling the webhook or external API triggers.
 
-- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), optional path to a Minecraft client JAR for entity textures (`client_jar_path`), player skin rendering and cache TTL, and the block colors file name. Edit when changing how the GIF looks or where assets are loaded from.
+- **renderer.yml** — Visual and asset options: isometric tile size (`tile_width`, `tile_height`), capture volume edge length (`volume_size`), cut plane offset (`cut_offset`), optional path to a Minecraft client JAR for entity textures (`client_jar_path`), player skin rendering and cache TTL, the block colors file name, and whether to use bundled 1.21 block textures (`block_textures_enabled`). Edit when changing how the GIF looks or where assets are loaded from.
+
+### Bundled 1.21 block textures
+
+For realistic block appearance (like in-game), you can bundle vanilla 1.21 block textures into the plugin. Without them, blocks are drawn using solid colors from `block_colors.json`.
+
+1. Obtain a Minecraft 1.21 client JAR (e.g. from `.minecraft/versions/1.21/<version>.jar`).
+2. Run: `./gradlew extractBlockTextures -PclientJar=/path/to/1.21.jar` (Windows: `gradlew.bat extractBlockTextures -PclientJar=C:\path\to\1.21.jar`).
+3. Rebuild the plugin: `./gradlew jar`. The extracted textures are included in the JAR.
+4. Ensure `block_textures_enabled: true` in `renderer.yml` (default).
 
 - **outputs.yml** — Defines named output profiles; each profile lists one or more targets (e.g. Discord webhook URL, generic webhook, or filesystem path template). Edit when adding or changing where GIFs are sent or saved. Profile names are referenced from `triggers.yml`.
 

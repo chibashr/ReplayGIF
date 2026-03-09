@@ -28,3 +28,8 @@ skin_cache_ttl_seconds: 3600
 # Path to block_colors.json relative to plugin data folder.
 # File is auto-generated on first run from block_colors_defaults.json; user-editable.
 block_colors_path: "block_colors.json"
+
+# Use bundled 1.21 block textures when available (realistic blocks). If false or no textures
+# are bundled, blocks are drawn with block_colors.json solid colors. To bundle textures, run:
+#   gradlew extractBlockTextures -PclientJar=/path/to/1.21.jar
+block_textures_enabled: true

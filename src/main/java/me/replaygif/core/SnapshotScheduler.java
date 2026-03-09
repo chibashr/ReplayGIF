@@ -1,19 +1,29 @@
 package me.replaygif.core;
 
+import me.replaygif.compat.AdventureTextUtil;
+import me.replaygif.compat.EntityCustomNameResolver;
+import me.replaygif.compat.RepeatingTaskHandle;
+import me.replaygif.compat.SchedulerCompat;
 import me.replaygif.config.ConfigManager;
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.boss.BossBar;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.entity.AreaEffectCloud;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.BoundingBox;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,38 +34,71 @@ import java.util.UUID;
  * per buffer. Spectator logic (capture for N seconds then pause) keeps memory bounded while still
  * allowing a short spectator replay window.
  */
-public class SnapshotScheduler extends BukkitRunnable {
+public class SnapshotScheduler implements Runnable {
+
+    private static final int BREAKING_SENTINEL = -999999;
+    private static final int BREAKING_STAGE_NONE = -1;
 
     private final JavaPlugin plugin;
     private final Map<UUID, SnapshotBuffer> buffers;
     private final ConfigManager configManager;
     private final BlockRegistry blockRegistry;
+    private final EntityCustomNameResolver customNameResolver;
+    private final BlockBreakTracker blockBreakTracker;
+    private final ActionBarTracker actionBarTracker;
+    private final CombatEventTracker combatEventTracker;
+    private volatile RepeatingTaskHandle taskHandle;
 
     /**
-     * @param plugin         for runTaskTimer and getServer().getOnlinePlayers()
-     * @param buffers        shared map of player UUID → SnapshotBuffer (scheduler only writes)
-     * @param configManager  fps, volume_size, spectator_capture_seconds
-     * @param blockRegistry  to encode block types as ordinals in the snapshot
+     * @param plugin             for scheduling and getServer().getOnlinePlayers()
+     * @param buffers            shared map of player UUID → SnapshotBuffer (scheduler only writes)
+     * @param configManager      fps, volume_size, spectator_capture_seconds
+     * @param blockRegistry      to encode block types as ordinals in the snapshot
+     * @param customNameResolver version-appropriate resolver for entity custom names (Nameable)
+     * @param blockBreakTracker  per-player block break state; may be null to use sentinel values
+     * @param actionBarTracker   per-player action bar text; may be null (then actionBarText always null)
+     * @param combatEventTracker attack records per tick; may be null (then attacksThisFrame always empty)
      */
     public SnapshotScheduler(
             JavaPlugin plugin,
             Map<UUID, SnapshotBuffer> buffers,
             ConfigManager configManager,
-            BlockRegistry blockRegistry) {
+            BlockRegistry blockRegistry,
+            EntityCustomNameResolver customNameResolver,
+            BlockBreakTracker blockBreakTracker,
+            ActionBarTracker actionBarTracker,
+            CombatEventTracker combatEventTracker) {
         this.plugin = plugin;
         this.buffers = buffers;
         this.configManager = configManager;
         this.blockRegistry = blockRegistry;
+        this.customNameResolver = customNameResolver;
+        this.blockBreakTracker = blockBreakTracker;
+        this.actionBarTracker = actionBarTracker;
+        this.combatEventTracker = combatEventTracker;
     }
 
     /**
      * Schedules the capture loop. Interval is 20/fps ticks (min 1) so we don't run faster than the server tick.
-     * Call once after buffers and config are ready.
+     * Call once after buffers and config are ready. Uses Paper GlobalRegionScheduler on 1.20+, Bukkit scheduler on 1.18–1.19.
      */
     public void start() {
         int fps = configManager.getFps();
         int intervalTicks = Math.max(1, 20 / fps);
-        runTaskTimer(plugin, 0L, intervalTicks);
+        taskHandle = SchedulerCompat.runRepeating(plugin, this, 0L, intervalTicks);
+    }
+
+    /** Cancels the repeating task. Safe to call if not started or already cancelled. */
+    public void cancel() {
+        if (taskHandle != null) {
+            taskHandle.cancel();
+            taskHandle = null;
+        }
+    }
+
+    /** True if the task is not running (never started or already cancelled). Used by status command. */
+    public boolean isCancelled() {
+        return taskHandle == null;
     }
 
     @Override
@@ -127,6 +170,37 @@ public class SnapshotScheduler extends BukkitRunnable {
         short[] blocks = captureBlocks(world, originX, originY, originZ, volumeSize);
         List<EntitySnapshot> entities = captureEntities(world, originX, originY, originZ, volumeSize);
 
+        int breakingBlockX = BREAKING_SENTINEL;
+        int breakingBlockY = BREAKING_SENTINEL;
+        int breakingBlockZ = BREAKING_SENTINEL;
+        int breakingStage = BREAKING_STAGE_NONE;
+        if (blockBreakTracker != null) {
+            var stateOpt = blockBreakTracker.getState(player.getUniqueId());
+            if (stateOpt.isPresent()) {
+                var state = stateOpt.get();
+                breakingBlockX = state.blockX();
+                breakingBlockY = state.blockY();
+                breakingBlockZ = state.blockZ();
+                breakingStage = state.stage();
+            }
+        }
+
+        String actionBarText = actionBarTracker != null ? actionBarTracker.getMessage(player.getUniqueId()) : null;
+
+        List<BossBarRecord> activeBossBars = captureBossBars(player);
+
+        List<AttackRecord> attacksThisFrame = combatEventTracker != null
+                ? combatEventTracker.drainAttacksForAttacker(player.getUniqueId(), originX, originY, originZ)
+                : List.of();
+
+        var inv = player.getInventory();
+        String mainHandItem = ItemSerializer.serialize(inv.getItemInMainHand());
+        String offHandItem = ItemSerializer.serialize(inv.getItemInOffHand());
+        String helmetItem = ItemSerializer.serialize(inv.getHelmet());
+        String chestplateItem = ItemSerializer.serialize(inv.getChestplate());
+        String leggingsItem = ItemSerializer.serialize(inv.getLeggings());
+        String bootsItem = ItemSerializer.serialize(inv.getBoots());
+
         return new WorldSnapshot(
                 timestamp,
                 originX,
@@ -141,7 +215,38 @@ public class SnapshotScheduler extends BukkitRunnable {
                 blocks,
                 volumeSize,
                 entities,
-                inSpectator);
+                inSpectator,
+                actionBarText,
+                activeBossBars,
+                breakingBlockX,
+                breakingBlockY,
+                breakingBlockZ,
+                breakingStage,
+                mainHandItem,
+                offHandItem,
+                helmetItem,
+                chestplateItem,
+                leggingsItem,
+                bootsItem,
+                attacksThisFrame);
+    }
+
+    private List<BossBarRecord> captureBossBars(Player player) {
+        List<BossBarRecord> bars = new ArrayList<>();
+        var it = Bukkit.getBossBars();
+        while (it.hasNext()) {
+            BossBar bar = it.next();
+            if (bar.getPlayers().contains(player)) {
+                String title = bar.getTitle();
+                if (title != null && !title.isEmpty()) {
+                    title = AdventureTextUtil.stripLegacyFormatting(title);
+                } else {
+                    title = "";
+                }
+                bars.add(new BossBarRecord(title, (float) bar.getProgress(), bar.getColor().name()));
+            }
+        }
+        return bars.isEmpty() ? List.of() : Collections.unmodifiableList(bars);
     }
 
     private static String dimensionKey(World world) {
@@ -230,7 +335,7 @@ public class SnapshotScheduler extends BukkitRunnable {
             boolean onFire = entity.getFireTicks() > 0;
             boolean invisible = entity instanceof LivingEntity && ((LivingEntity) entity).isInvisible();
             String customName = entity instanceof org.bukkit.Nameable
-                    ? ((org.bukkit.Nameable) entity).getCustomName()
+                    ? customNameResolver.getCustomName((org.bukkit.Nameable) entity)
                     : null;
             if (customName != null && customName.isEmpty()) {
                 customName = null;
@@ -242,6 +347,43 @@ public class SnapshotScheduler extends BukkitRunnable {
             double h = bbox.getHeight();
             double boundingWidth = Math.max(Math.max(wX, wZ), 1e-6);  // Guard: entity with 0-size bbox would cause div-by-zero in renderer
             double boundingHeight = Math.max(h, 1e-6);
+
+            float hurtProgress = -1.0f;
+            boolean isDead = false;
+            if (entity instanceof LivingEntity living) {
+                int noDamageTicks = living.getNoDamageTicks();
+                int maxNoDamageTicks = living.getMaximumNoDamageTicks();
+                hurtProgress = (noDamageTicks > 0 && maxNoDamageTicks > 0)
+                        ? (float) noDamageTicks / maxNoDamageTicks
+                        : 0.0f;
+                isDead = living.isDead() || living.getHealth() <= 0;
+            }
+
+            float aecRadius = -1.0f;
+            String aecEffectName = null;
+            if (entity instanceof AreaEffectCloud aec) {
+                aecRadius = aec.getRadius();
+                if (!aec.getCustomEffects().isEmpty()) {
+                    PotionEffect primaryEffect = aec.getCustomEffects().iterator().next();
+                    aecEffectName = primaryEffect.getType().getName();
+                } else if (aec.getBasePotionData() != null && aec.getBasePotionData().getType() != null) {
+                    aecEffectName = aec.getBasePotionData().getType().getEffectType().getName();
+                }
+            }
+
+            String droppedItemMaterial = null;
+            if (entity instanceof Item itemEntity) {
+                ItemStack stack = itemEntity.getItemStack();
+                droppedItemMaterial = ItemSerializer.serialize(stack);
+            }
+
+            UUID shooterUUID = null;
+            if (entity instanceof org.bukkit.entity.Projectile proj) {
+                org.bukkit.projectiles.ProjectileSource src = proj.getShooter();
+                if (src instanceof Entity shooterEntity) {
+                    shooterUUID = shooterEntity.getUniqueId();
+                }
+            }
 
             result.add(new EntitySnapshot(
                     entity.getType(),
@@ -255,7 +397,13 @@ public class SnapshotScheduler extends BukkitRunnable {
                     invisible,
                     customName,
                     boundingWidth,
-                    boundingHeight));
+                    boundingHeight,
+                    hurtProgress,
+                    isDead,
+                    aecRadius,
+                    aecEffectName,
+                    droppedItemMaterial,
+                    shooterUUID));
         }
         return result;
     }

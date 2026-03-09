@@ -13,7 +13,7 @@ softdepend: []
 commands:
   replaygif:
     description: ReplayGif management commands.
-    usage: /replaygif <reload|status|test [player]>
+    usage: /replaygif <reload|status|test [player]|diag>
     permission: replaygif.admin
 
 permissions:

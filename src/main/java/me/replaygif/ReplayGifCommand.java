@@ -1,6 +1,7 @@
 package me.replaygif;
 
 import me.replaygif.api.ReplayGifAPI;
+import me.replaygif.compat.MessageSender;
 import me.replaygif.trigger.RenderJob;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -11,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -22,24 +24,27 @@ import java.util.stream.Collectors;
  */
 public class ReplayGifCommand implements CommandExecutor, TabCompleter {
 
-    private static final String USAGE = "Usage: /replaygif <reload|status|test [player]>";
+    private static final String USAGE = "Usage: /replaygif <reload|status|test [player]|diag>";
 
     private final ReplayGifPlugin plugin;
+    private final MessageSender messageSender;
 
-    public ReplayGifCommand(ReplayGifPlugin plugin) {
+    public ReplayGifCommand(ReplayGifPlugin plugin, MessageSender messageSender) {
         this.plugin = plugin;
+        this.messageSender = messageSender;
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
         if (args.length == 0) {
-            sender.sendMessage(USAGE);
+            messageSender.send(sender, USAGE);
             return true;
         }
         String sub = args[0].equalsIgnoreCase("reload") ? "reload" :
                 args[0].equalsIgnoreCase("status") ? "status" :
-                        args[0].equalsIgnoreCase("test") ? "test" : "";
+                        args[0].equalsIgnoreCase("test") ? "test" :
+                                args[0].equalsIgnoreCase("diag") ? "diag" : "";
         switch (sub) {
             case "reload":
                 return handleReload(sender);
@@ -47,15 +52,17 @@ public class ReplayGifCommand implements CommandExecutor, TabCompleter {
                 return handleStatus(sender);
             case "test":
                 return handleTest(sender, args.length > 1 ? args[1] : null);
+            case "diag":
+                return handleDiag(sender);
             default:
-                sender.sendMessage(USAGE);
+                messageSender.send(sender, USAGE);
                 return true;
         }
     }
 
     private boolean handleReload(CommandSender sender) {
         plugin.reload();
-        sender.sendMessage("ReplayGif config reloaded. Buffers cleared and scheduler restarted.");
+        messageSender.send(sender, "ReplayGif config reloaded. Buffers cleared and scheduler restarted.");
         return true;
     }
 
@@ -92,7 +99,7 @@ public class ReplayGifCommand implements CommandExecutor, TabCompleter {
         lines.add("------------------------");
 
         for (String line : lines) {
-            sender.sendMessage(line);
+            messageSender.send(sender, line);
         }
         return true;
     }
@@ -103,24 +110,68 @@ public class ReplayGifCommand implements CommandExecutor, TabCompleter {
             if (sender instanceof Player) {
                 target = (Player) sender;
             } else {
-                sender.sendMessage("Specify a player: /replaygif test <player>");
+                messageSender.send(sender, "Specify a player: /replaygif test <player>");
                 return true;
             }
         } else {
             target = plugin.getServer().getPlayerExact(playerName);
             if (target == null) {
-                sender.sendMessage("Player '" + playerName + "' is not online.");
+                messageSender.send(sender, "Player '" + playerName + "' is not online.");
                 return true;
             }
         }
 
         ReplayGifAPI api = plugin.getReplayGifAPIImpl();
         if (api == null) {
-            sender.sendMessage("ReplayGif API not available.");
+            messageSender.send(sender, "ReplayGif API not available.");
             return true;
         }
         UUID jobId = api.trigger(target, "test", -1, -1, null, null);
-        sender.sendMessage("Render triggered for " + target.getName() + ". Job ID: " + jobId);
+        messageSender.send(sender, "Render triggered for " + target.getName() + ". Job ID: " + jobId);
+        return true;
+    }
+
+    private boolean handleDiag(CommandSender sender) {
+        // Block colors
+        var blockRegistry = plugin.getBlockRegistry();
+        var blockColorMap = plugin.getBlockColorMap();
+        if (blockRegistry != null && blockColorMap != null) {
+            List<String> gaps = blockColorMap.getMaterialsWithDefaultGray(blockRegistry);
+            Collections.sort(gaps);
+            String line = "Block colors: " + gaps.size() + " material(s) with no entry (fallback #808080).";
+            plugin.getSLF4JLogger().info("[ReplayGif diag] {}", line);
+            messageSender.send(sender, line);
+            if (!gaps.isEmpty()) {
+                for (String name : gaps) {
+                    plugin.getSLF4JLogger().info("[ReplayGif diag]   {}", name);
+                }
+                messageSender.send(sender, "Gap list (add to block_colors_defaults.json): " + String.join(", ", gaps));
+            } else {
+                messageSender.send(sender, "No gaps — all block materials have a color entry.");
+            }
+        } else {
+            messageSender.send(sender, "BlockColorMap not available.");
+        }
+
+        // Entity sprites: living entities with no sprite and no marker color (gray fallback)
+        var entitySpriteRegistry = plugin.getEntitySpriteRegistry();
+        if (entitySpriteRegistry != null) {
+            List<String> entityGaps = entitySpriteRegistry.getLivingEntityTypesWithGrayFallback();
+            Collections.sort(entityGaps);
+            String entityLine = "Entity sprites: " + entityGaps.size() + " living entity type(s) with no sprite and no marker color (fallback gray).";
+            plugin.getSLF4JLogger().info("[ReplayGif diag] {}", entityLine);
+            messageSender.send(sender, entityLine);
+            if (!entityGaps.isEmpty()) {
+                for (String name : entityGaps) {
+                    plugin.getSLF4JLogger().info("[ReplayGif diag]   {}", name);
+                }
+                messageSender.send(sender, "Entity gap list: add bundled sprite (entity_sprites_default/<name>.png) for hostiles, or color in entity_bounds.json for passive/neutral.");
+            } else {
+                messageSender.send(sender, "No entity gaps — all living entity types have a sprite or marker color.");
+            }
+        } else {
+            messageSender.send(sender, "EntitySpriteRegistry not available.");
+        }
         return true;
     }
 
@@ -130,7 +181,7 @@ public class ReplayGifCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
             List<String> out = new ArrayList<>();
-            for (String opt : new String[]{"reload", "status", "test"}) {
+            for (String opt : new String[]{"reload", "status", "test", "diag"}) {
                 if (opt.startsWith(partial)) {
                     out.add(opt);
                 }

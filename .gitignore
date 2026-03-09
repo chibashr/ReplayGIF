@@ -16,3 +16,6 @@ Thumbs.db
 # Wrapper temp (if re-generated)
 gradle/wrapper/*.zip
 gradle/wrapper/gradle-*/
+
+# Bundled block textures (extract from 1.21 client JAR; see block_textures/README.txt)
+src/main/resources/block_textures/*.png

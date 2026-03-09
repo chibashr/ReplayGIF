@@ -2,6 +2,7 @@ package me.replaygif.command;
 
 import me.replaygif.ReplayGifCommand;
 import me.replaygif.ReplayGifPlugin;
+import me.replaygif.compat.MessageSender;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -13,7 +14,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -30,15 +30,12 @@ class ReplayGifCommandTest {
     @BeforeEach
     void setUp() {
         plugin = mock(ReplayGifPlugin.class);
-        command = new ReplayGifCommand(plugin);
+        sentMessages = new ArrayList<>();
+        MessageSender testMessageSender = (s, msg) -> sentMessages.add(msg);
+        command = new ReplayGifCommand(plugin, testMessageSender);
         bukkitCommand = mock(Command.class);
         when(bukkitCommand.getName()).thenReturn("replaygif");
-        sentMessages = new ArrayList<>();
         sender = mock(CommandSender.class);
-        doAnswer(inv -> {
-            sentMessages.add(inv.getArgument(0));
-            return null;
-        }).when(sender).sendMessage(anyString());
     }
 
     @Test

@@ -5,13 +5,18 @@ import com.google.gson.reflect.TypeToken;
 import org.bukkit.entity.EntityType;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import org.bukkit.entity.LivingEntity;
+
 import javax.imageio.ImageIO;
+import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
@@ -33,6 +38,7 @@ public class EntitySpriteRegistry {
     private final JavaPlugin plugin;
     private final Map<EntityType, BufferedImage> spriteByType = new HashMap<>();
     private final Map<EntityType, BoundingBox> boundsByType = new HashMap<>();
+    private final Map<EntityType, Color> markerColorByType = new HashMap<>();
     private volatile BufferedImage fireOverlay;
     private volatile BufferedImage gravestone;
 
@@ -63,6 +69,12 @@ public class EntitySpriteRegistry {
                         if (b != null && b.width > 0 && b.height > 0) {
                             boundsByType.put(type, new BoundingBox(b.width, b.height));
                         }
+                        if (b != null && b.color != null && !b.color.isBlank()) {
+                            Color c = parseHexColor(b.color);
+                            if (c != null) {
+                                markerColorByType.put(type, c);
+                            }
+                        }
                     } catch (IllegalArgumentException ignored) {
                         // unknown entity type name, skip
                     }
@@ -77,7 +89,8 @@ public class EntitySpriteRegistry {
             try (ZipFile zip = new ZipFile(clientJarPath.trim())) {
                 for (EntityType type : EntityType.values()) {
                     String name = type.name().toLowerCase();
-                    String path = ENTITY_TEXTURES_PREFIX + name + ".png";
+                    String fileName = (type == EntityType.FISHING_HOOK) ? "fishing_bobber.png" : name + ".png";
+                    String path = ENTITY_TEXTURES_PREFIX + fileName;
                     ZipEntry entry = zip.getEntry(path);
                     if (entry != null && !entry.isDirectory()) {
                         try (InputStream is = zip.getInputStream(entry)) {
@@ -96,7 +109,9 @@ public class EntitySpriteRegistry {
         if (!fromJar) {
             for (EntityType type : EntityType.values()) {
                 String name = type.name().toLowerCase();
-                String path = BUNDLED_SPRITES_PREFIX + name + ".png";
+                String path = (type == EntityType.FISHING_HOOK)
+                        ? BUNDLED_SPRITES_PREFIX + "fishing_bobber.png"
+                        : BUNDLED_SPRITES_PREFIX + name + ".png";
                 try (InputStream is = plugin.getResource(path)) {
                     if (is != null) {
                         BufferedImage img = ImageIO.read(is);
@@ -122,6 +137,53 @@ public class EntitySpriteRegistry {
     /** Width and height in blocks for sprite scaling; default 0.6×1.8 when not in bounds file. */
     public BoundingBox getBounds(EntityType type) {
         return boundsByType.getOrDefault(type, new BoundingBox(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+    }
+
+    /** Configured marker color for this entity type when no sprite is available; empty if not in entity_bounds.json or no color field. */
+    public Optional<Color> getMarkerColor(EntityType type) {
+        return Optional.ofNullable(markerColorByType.get(type));
+    }
+
+    /**
+     * True if this type has either a sprite (client jar or bundled) or a configured marker color.
+     * When false, the renderer uses the generic gray marker fallback.
+     */
+    public boolean hasSpriteOrMarkerColor(EntityType type) {
+        return spriteByType.containsKey(type) || markerColorByType.containsKey(type);
+    }
+
+    /**
+     * Living entity types that have neither a sprite nor a configured marker color (gray fallback).
+     * Used by the diagnostic command. Uses EntityType.getEntityClass() and LivingEntity assignability.
+     */
+    public List<String> getLivingEntityTypesWithGrayFallback() {
+        List<String> out = new ArrayList<>();
+        for (EntityType type : EntityType.values()) {
+            Class<?> clazz = type.getEntityClass();
+            if (clazz == null || !LivingEntity.class.isAssignableFrom(clazz)) {
+                continue;
+            }
+            if (!hasSpriteOrMarkerColor(type)) {
+                out.add(type.name());
+            }
+        }
+        return out;
+    }
+
+    private static Color parseHexColor(String hex) {
+        if (hex == null || !hex.startsWith("#")) {
+            return null;
+        }
+        String s = hex.trim().substring(1);
+        if (s.length() != 6) {
+            return null;
+        }
+        try {
+            int rgb = Integer.parseInt(s, 16);
+            return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Lazy-loaded fire overlay for entities with onFire; null if resource missing. */
@@ -159,5 +221,7 @@ public class EntitySpriteRegistry {
     private static class BoundsEntry {
         double width;
         double height;
+        /** Optional hex color (e.g. "#7CFC00") for marker when no sprite; used by renderer fallback. */
+        String color;
     }
 }

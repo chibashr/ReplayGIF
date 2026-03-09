@@ -6,18 +6,30 @@ import me.replaygif.api.ApiTriggerListener;
 import me.replaygif.config.ConfigManager;
 import me.replaygif.config.OutputProfileRegistry;
 import me.replaygif.config.TriggerRuleRegistry;
+import me.replaygif.core.ActionBarTracker;
+import me.replaygif.core.BlockBreakTracker;
+import me.replaygif.core.CombatEventTracker;
 import me.replaygif.core.BlockRegistry;
 import me.replaygif.core.SnapshotBuffer;
 import me.replaygif.core.SnapshotScheduler;
 import me.replaygif.encoder.GifEncoder;
 import me.replaygif.renderer.BlockColorMap;
+import me.replaygif.renderer.BlockTextureRegistry;
 import me.replaygif.renderer.EntitySpriteRegistry;
+import me.replaygif.renderer.HurtParticleSynthesizer;
 import me.replaygif.renderer.IsometricRenderer;
 import me.replaygif.renderer.SkinCache;
 import me.replaygif.trigger.DeathListener;
 import me.replaygif.trigger.DynamicListenerRegistry;
 import me.replaygif.trigger.TriggerHandler;
 import me.replaygif.trigger.WebhookInboundServer;
+import me.replaygif.compat.EntityCustomNameResolver;
+import me.replaygif.compat.EntityCustomNameResolverLegacy;
+import me.replaygif.compat.EntityCustomNameResolverModern;
+import me.replaygif.compat.MessageSender;
+import me.replaygif.compat.MessageSenderLegacy;
+import me.replaygif.compat.MessageSenderModern;
+import me.replaygif.compat.VersionHelper;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -26,16 +38,20 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import javax.imageio.ImageIO;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.awt.image.BufferedImage;
 
 public final class ReplayGifPlugin extends JavaPlugin implements Listener {
 
     private ConfigManager configManager;
     private BlockRegistry blockRegistry;
     private BlockColorMap blockColorMap;
+    private BlockTextureRegistry blockTextureRegistry;
     private EntitySpriteRegistry entitySpriteRegistry;
     private SkinCache skinCache;
     private Map<UUID, SnapshotBuffer> buffers;
@@ -46,10 +62,23 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
     private WebhookInboundServer webhookInboundServer;
     private ReplayGifAPIImpl replayGifAPIImpl;
     private DynamicListenerRegistry dynamicListenerRegistry;
+    private EntityCustomNameResolver entityCustomNameResolver;
+    private MessageSender messageSender;
+    private BlockBreakTracker blockBreakTracker;
+    private CombatEventTracker combatEventTracker;
+    private ActionBarTracker actionBarTracker;
 
     @Override
     public void onEnable() {
         getSLF4JLogger().info("ReplayGif enabling...");
+
+        VersionHelper.init(getServer());
+        entityCustomNameResolver = VersionHelper.useModernNameableApi()
+                ? new EntityCustomNameResolverModern()
+                : new EntityCustomNameResolverLegacy();
+        messageSender = VersionHelper.useModernSendMessage()
+                ? new MessageSenderModern()
+                : new MessageSenderLegacy();
 
         // 1. ConfigManager — load and validate all config files
         configManager = new ConfigManager(this);
@@ -75,6 +104,16 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         }
         // (BlockColorMap logs "BlockColorMap loaded." or "Generated block_colors.json...")
 
+        // 3b. BlockTextureRegistry — bundled 1.21 block textures (optional)
+        blockTextureRegistry = null;
+        if (configManager.getBlockTexturesEnabled()) {
+            try {
+                blockTextureRegistry = new BlockTextureRegistry(this, blockRegistry);
+            } catch (IOException e) {
+                getSLF4JLogger().warn("Block textures not available (run extractBlockTextures to bundle them): {}", e.getMessage());
+            }
+        }
+
         // 4. EntitySpriteRegistry — client jar or bundled sprites + entity_bounds
         try {
             entitySpriteRegistry = new EntitySpriteRegistry(this, configManager.getClientJarPath());
@@ -88,7 +127,11 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         skinCache = new SkinCache(this, configManager.getSkinRenderingEnabled(), configManager.getSkinCacheTtlSeconds());
         getSLF4JLogger().info("SkinCache initialized.");
 
-        // 6. IsometricRenderer
+        // 6. HurtParticleSynthesizer + crack stages + IsometricRenderer
+        HurtParticleSynthesizer hurtParticleSynthesizer = new HurtParticleSynthesizer(
+                configManager.getTileWidth(),
+                configManager.getTileHeight());
+        BufferedImage[] crackStages = loadCrackStages();
         IsometricRenderer isometricRenderer = new IsometricRenderer(
                 configManager.getVolumeSize(),
                 configManager.getTileWidth(),
@@ -96,8 +139,11 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 configManager.getCutOffset(),
                 blockColorMap,
                 blockRegistry,
+                blockTextureRegistry,
                 entitySpriteRegistry,
-                skinCache);
+                skinCache,
+                hurtParticleSynthesizer,
+                crackStages);
         getSLF4JLogger().info("IsometricRenderer ready.");
 
         // 7. GifEncoder
@@ -146,6 +192,20 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         getSLF4JLogger().info("Player join/quit listener registered.");
 
+        // 22.5. BlockBreakTracker — per-player block break state for snapshot capture
+        blockBreakTracker = new BlockBreakTracker();
+        getServer().getPluginManager().registerEvents(blockBreakTracker, this);
+        getSLF4JLogger().info("BlockBreakTracker registered.");
+
+        // 22.6. CombatEventTracker — attack records per tick for snapshot capture
+        combatEventTracker = new CombatEventTracker();
+        getServer().getPluginManager().registerEvents(combatEventTracker, this);
+        getSLF4JLogger().info("CombatEventTracker registered.");
+
+        // 22.7. ActionBarTracker — per-player action bar text for snapshot capture (best-effort)
+        actionBarTracker = new ActionBarTracker(getSLF4JLogger());
+        getServer().getPluginManager().registerEvents(actionBarTracker, this);
+
         // ReplayGifTriggerEvent listener (MONITOR, respects allow_api_triggers)
         getServer().getPluginManager().registerEvents(
                 new ApiTriggerListener(triggerHandler, configManager, getSLF4JLogger()), this);
@@ -153,13 +213,13 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         // Commands: reload, status, test (with tab completion)
         var replaygifCommand = getCommand("replaygif");
         if (replaygifCommand != null) {
-            ReplayGifCommand cmd = new ReplayGifCommand(this);
+            ReplayGifCommand cmd = new ReplayGifCommand(this, messageSender);
             replaygifCommand.setExecutor(cmd);
             replaygifCommand.setTabCompleter(cmd);
         }
 
         // 17. SnapshotScheduler — start last
-        snapshotScheduler = new SnapshotScheduler(this, buffers, configManager, blockRegistry);
+        snapshotScheduler = new SnapshotScheduler(this, buffers, configManager, blockRegistry, entityCustomNameResolver, blockBreakTracker, actionBarTracker, combatEventTracker);
         snapshotScheduler.start();
         getSLF4JLogger().info("SnapshotScheduler started.");
     }
@@ -256,6 +316,25 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         return replayGifAPIImpl;
     }
 
+    /** Loads crack_stage_0.png through crack_stage_9.png from plugin resources. Returns null if any fail. */
+    private BufferedImage[] loadCrackStages() {
+        BufferedImage[] stages = new BufferedImage[10];
+        for (int i = 0; i < 10; i++) {
+            String path = "crack_stage_" + i + ".png";
+            try (InputStream in = getResource(path)) {
+                if (in != null) {
+                    stages[i] = ImageIO.read(in);
+                }
+            } catch (IOException ignored) {
+                // fall through
+            }
+            if (stages[i] == null) {
+                return null;
+            }
+        }
+        return stages;
+    }
+
     /**
      * Reload config, clear all buffers (then re-create for online players),
      * restart SnapshotScheduler, and restart HttpServer only if port or enabled changed.
@@ -276,7 +355,7 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         if (snapshotScheduler != null) {
             snapshotScheduler.cancel();
         }
-        snapshotScheduler = new SnapshotScheduler(this, buffers, configManager, blockRegistry);
+        snapshotScheduler = new SnapshotScheduler(this, buffers, configManager, blockRegistry, entityCustomNameResolver, blockBreakTracker, actionBarTracker, combatEventTracker);
         snapshotScheduler.start();
         getSLF4JLogger().info("SnapshotScheduler restarted.");
 

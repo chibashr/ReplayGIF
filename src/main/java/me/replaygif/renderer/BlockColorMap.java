@@ -13,7 +13,8 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 
@@ -167,6 +168,21 @@ public class BlockColorMap {
             return false;
         }
         return emissiveByOrdinal[ordinal];
+    }
+
+    /**
+     * Returns material names that are using the default gray (#808080) because they have
+     * no entry in block_colors (defaults or generated file). Used by the diagnostic command.
+     */
+    public List<String> getMaterialsWithDefaultGray(BlockRegistry blockRegistry) {
+        int grayRgb = GRAY.getRGB();
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < ordinalCount; i++) {
+            if (baseColorByOrdinal[i].getRGB() == grayRgb) {
+                out.add(blockRegistry.getMaterial((short) i).name());
+            }
+        }
+        return out;
     }
 
     /**

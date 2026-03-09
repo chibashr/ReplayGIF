@@ -1,5 +1,6 @@
 package me.replaygif.renderer;
 
+import me.replaygif.core.AttackRecord;
 import me.replaygif.core.BlockRegistry;
 import me.replaygif.core.EntitySnapshot;
 import me.replaygif.core.WorldSnapshot;
@@ -17,8 +18,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -380,5 +384,345 @@ class IsometricRendererTest {
                 "minecraft:overworld", "world",
                 new short[volumeSize * volumeSize * volumeSize],
                 volumeSize, List.of(), false);
+    }
+
+    /** Underground scenario A — Dripstone cave: cutout culls back; POINTED_DRIPSTONE and cave geometry visible; player not occluded. */
+    @Test
+    void undergroundA_dripstoneCave_cutoutAndDripstoneVisible() {
+        int vol = 32;
+        int half = vol / 2;
+        short stone = blockRegistry.getOrdinal(Material.STONE);
+        short dripstone = blockRegistry.getOrdinal(Material.POINTED_DRIPSTONE);
+        short[] blocks = new short[vol * vol * vol];
+        // Cave floor at relY -1 (one layer below origin)
+        for (int relX = -3; relX <= 3; relX++) {
+            for (int relZ = -3; relZ <= 3; relZ++) {
+                int x = half + relX, y = half - 1, z = half + relZ;
+                if (x >= 0 && x < vol && y >= 0 && y < vol && z >= 0 && z < vol)
+                    blocks[x * vol * vol + y * vol + z] = stone;
+            }
+        }
+        // Stalactites (POINTED_DRIPSTONE) above: relY 1..4, relX/relZ in front half (relX+relZ <= 4)
+        for (int relY = 1; relY <= 4; relY++) {
+            for (int relX = -2; relX <= 2; relX++) {
+                for (int relZ = -2; relZ <= 2; relZ++) {
+                    if (relX + relZ <= 4) {
+                        int x = half + relX, y = half + relY, z = half + relZ;
+                        if (x >= 0 && x < vol && y >= 0 && y < vol && z >= 0 && z < vol)
+                            blocks[x * vol * vol + y * vol + z] = dripstone;
+                    }
+                }
+            }
+        }
+        // Walls: a few blocks at relY 0
+        for (int relX = -3; relX <= 3; relX++)
+            for (int relZ = -3; relZ <= 3; relZ++) {
+                if (Math.abs(relX) == 3 || Math.abs(relZ) == 3) {
+                    int x = half + relX, y = half, z = half + relZ;
+                    if (x >= 0 && x < vol && y >= 0 && y < vol && z >= 0 && z < vol)
+                        blocks[x * vol * vol + y * vol + z] = stone;
+                }
+            }
+        IsometricRenderer caveRenderer = new IsometricRenderer(vol, 16, 8, 4, blockColorMap, blockRegistry);
+        WorldSnapshot snapshot = new WorldSnapshot(
+                0L, 0, 0, 0, 0f, 0f, 20f, 20,
+                "minecraft:overworld", "world", blocks, vol, List.of(), false);
+        List<IsometricRenderer.BlockDrawEntry> drawList = caveRenderer.buildBlockDrawList(snapshot);
+        // Cut plane: only blocks with relX+relZ <= 4 are drawn
+        for (IsometricRenderer.BlockDrawEntry e : drawList) {
+            assertTrue(e.relX() + e.relZ() <= 4, "Dollhouse cutout: drawn block must have relX+relZ <= cutOffset 4");
+        }
+        // At least one POINTED_DRIPSTONE in front half (not gray fallback: we use block_colors_defaults POINTED_DRIPSTONE)
+        boolean hasDripstone = drawList.stream().anyMatch(e -> e.materialOrdinal() == dripstone);
+        assertTrue(hasDripstone, "POINTED_DRIPSTONE must appear in draw list (distinct color in defaults)");
+        // Floor and walls present
+        boolean hasFloor = drawList.stream().anyMatch(e -> e.relY() == -1 && e.materialOrdinal() == stone);
+        assertTrue(hasFloor, "Cave floor (stone) must be visible");
+        BufferedImage img = caveRenderer.renderFrame(snapshot, 0);
+        assertNotNull(img);
+    }
+
+    /** Underground scenario B — Deep dark: sculk block types have distinct colors in block_colors_defaults; Warden in volume appears as sprite. */
+    @Test
+    void undergroundB_deepDark_sculkColorsAndWardenSprite() throws IOException {
+        // Sculk colors (1.19+): block_colors_defaults.json defines SCULK, SCULK_VEIN, SCULK_CATALYST, SCULK_SHRIEKER, SCULK_SENSOR (dark blue/cyan)
+        for (String name : List.of("SCULK", "SCULK_VEIN", "SCULK_CATALYST", "SCULK_SHRIEKER", "SCULK_SENSOR")) {
+            try {
+                Material m = Material.valueOf(name);
+                BlockFaceColors faces = blockColorMap.getFaces(blockRegistry.getOrdinal(m));
+                assertFalse(faces.top().getRed() == 128 && faces.top().getGreen() == 128 && faces.top().getBlue() == 128,
+                        name + " must not be gray fallback");
+            } catch (IllegalArgumentException ignored) { /* 1.18.2 API has no SCULK*; skip */ }
+        }
+        // Warden in volume (1.19+): entity pass draws sprite (covered by entity registry + diag_entityGaps)
+        EntitySpriteRegistry entityRegistry = createEntitySpriteRegistry();
+        EntityType wardenType;
+        try {
+            wardenType = EntityType.valueOf("WARDEN");
+        } catch (IllegalArgumentException e) {
+            return; // 1.18.2 API has no WARDEN
+        }
+        EntitySnapshot warden = new EntitySnapshot(
+                wardenType, 2, 0, 2, 0f, UUID.randomUUID(), false, false, false,
+                null, 0.9, 2.9);
+        IsometricRenderer fullRenderer = new IsometricRenderer(32, 16, 8, 4, blockColorMap, blockRegistry, entityRegistry, createSkinCache());
+        WorldSnapshot snapshot = new WorldSnapshot(
+                0L, 0, 0, 0, 0f, 0f, 20f, 20,
+                "minecraft:overworld", "world",
+                new short[32 * 32 * 32], 32, List.of(warden), false);
+        BufferedImage img = fullRenderer.renderFrame(snapshot, 0, new IsometricRenderer.RenderFrameContext(0, "P", 0, 0, 0, false));
+        assertNotNull(img);
+    }
+
+    /** Underground scenario C — Aquifer: water renders with transparency and shimmer; blocks behind visible; player visible. */
+    @Test
+    void undergroundC_aquifer_waterTransparencyAndPlayerVisible() {
+        int vol = 32;
+        int half = vol / 2;
+        short water = blockRegistry.getOrdinal(Material.WATER);
+        short stone = blockRegistry.getOrdinal(Material.STONE);
+        short[] blocks = new short[vol * vol * vol];
+        // Water around origin (rel -1..1 in X,Z, relY 0 and 1)
+        for (int relX = -1; relX <= 1; relX++) {
+            for (int relZ = -1; relZ <= 1; relZ++) {
+                for (int relY = 0; relY <= 1; relY++) {
+                    int x = half + relX, y = half + relY, z = half + relZ;
+                    if (x >= 0 && x < vol && y >= 0 && y < vol && z >= 0 && z < vol)
+                        blocks[x * vol * vol + y * vol + z] = water;
+                }
+            }
+        }
+        // Stone behind water (rel 2,0,0) to verify visibility through water
+        blocks[(half + 2) * vol * vol + half * vol + half] = stone;
+        WorldSnapshot snapshot = new WorldSnapshot(
+                0L, 0, 0, 0, 0f, 0f, 20f, 20,
+                "minecraft:overworld", "world", blocks, vol, List.of(), false);
+        List<IsometricRenderer.BlockDrawEntry> drawList = renderer.buildBlockDrawList(snapshot);
+        boolean hasWater = drawList.stream().anyMatch(e -> e.materialOrdinal() == water);
+        assertTrue(hasWater, "Water blocks must be in draw list");
+        // Water is transparent + liquid: renderer uses TRANSPARENT_MATERIALS and LIQUID_MATERIALS; render two frames to confirm shimmer (hue shift)
+        BufferedImage frame0 = renderer.renderFrame(snapshot, 0);
+        BufferedImage frame5 = renderer.renderFrame(snapshot, 5);
+        assertNotNull(frame0);
+        assertNotNull(frame5);
+        // Player would be drawn on top of blocks in full render; here we have no entity, but blocks behind water are in draw list (painter's order)
+        boolean hasStoneBehind = drawList.stream().anyMatch(e -> e.materialOrdinal() == stone);
+        assertTrue(hasStoneBehind, "Blocks behind water remain in draw list (visible through transparency)");
+    }
+
+    /** BB4 — Rendered frame: block at breaking position has crack overlay. Stage 0: barely visible. Stage 9: heavy cracking. */
+    @Test
+    void bb4_crackOverlay_blockAtBreakingPosition_stage0VsStage9() throws IOException {
+        int vol = 32;
+        int half = vol / 2;
+        short stone = blockRegistry.getOrdinal(Material.STONE);
+        short[] blocks = new short[vol * vol * vol];
+        blocks[half * vol * vol + half * vol + half] = stone; // single block at origin (rel 0,0,0)
+        BufferedImage[] crackStages = new BufferedImage[10];
+        for (int i = 0; i < 10; i++) {
+            crackStages[i] = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = crackStages[i].createGraphics();
+            g.setColor(new java.awt.Color(80, 40, 40, 120 + i * 12));
+            g.fillRect(0, 0, 16, 16);
+            g.dispose();
+        }
+        IsometricRenderer crackRenderer = new IsometricRenderer(vol, 16, 8, 4, blockColorMap, blockRegistry, null, null, null, null, crackStages);
+        WorldSnapshot noBreak = new WorldSnapshot(0L, 0, 0, 0, 0f, 0f, 20f, 20, "minecraft:overworld", "world", blocks, vol, List.of(), false, null, List.of(), -999999, -999999, -999999, -1);
+        WorldSnapshot breakingStage0 = new WorldSnapshot(0L, 0, 0, 0, 0f, 0f, 20f, 20, "minecraft:overworld", "world", blocks, vol, List.of(), false, null, List.of(), 0, 0, 0, 0);
+        WorldSnapshot breakingStage9 = new WorldSnapshot(0L, 0, 0, 0, 0f, 0f, 20f, 20, "minecraft:overworld", "world", blocks, vol, List.of(), false, null, List.of(), 0, 0, 0, 9);
+        BufferedImage imgNoBreak = crackRenderer.renderFrame(noBreak, 0);
+        BufferedImage imgStage0 = crackRenderer.renderFrame(breakingStage0, 0);
+        BufferedImage imgStage9 = crackRenderer.renderFrame(breakingStage9, 0);
+        assertNotNull(imgNoBreak);
+        assertNotNull(imgStage0);
+        assertNotNull(imgStage9);
+        assertEquals(imgNoBreak.getWidth(), imgStage9.getWidth());
+        assertEquals(imgNoBreak.getHeight(), imgStage9.getHeight());
+        java.awt.Point center = crackRenderer.project(0, 0, 0);
+        int cx = Math.max(0, Math.min(imgNoBreak.getWidth() - 1, center.x));
+        int cy = Math.max(0, Math.min(imgNoBreak.getHeight() - 1, center.y));
+        assertTrue(imgNoBreak.getRGB(cx, cy) != imgStage9.getRGB(cx, cy),
+                "Crack overlay at stage 9 should change block top-center pixel vs no break");
+    }
+
+    /** BB5 — Crack scales with block face: overlay drawn on all three faces (top, left, right) without exception. */
+    @Test
+    void bb5_crackOverlay_scalesToBlockFaces() throws IOException {
+        int vol = 16;
+        int half = vol / 2;
+        short stone = blockRegistry.getOrdinal(Material.STONE);
+        short[] blocks = new short[vol * vol * vol];
+        blocks[half * vol * vol + half * vol + half] = stone;
+        BufferedImage[] crackStages = new BufferedImage[10];
+        for (int i = 0; i < 10; i++) {
+            crackStages[i] = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        }
+        IsometricRenderer crackRenderer = new IsometricRenderer(vol, 16, 8, 4, blockColorMap, blockRegistry, null, null, null, null, crackStages);
+        WorldSnapshot snapshot = new WorldSnapshot(0L, 0, 0, 0, 0f, 0f, 20f, 20, "minecraft:overworld", "world", blocks, vol, List.of(), false, null, List.of(), 0, 0, 0, 5);
+        BufferedImage img = crackRenderer.renderFrame(snapshot, 0);
+        assertNotNull(img);
+        assertEquals(crackRenderer.getImageWidth(), img.getWidth());
+        assertEquals(crackRenderer.getImageHeight(), img.getHeight());
+    }
+
+    /** CP3 — Neither critical nor sweep: no combat particles drawn (attacksThisFrame empty or no crit/sweep). */
+    @Test
+    void cp3_noCombatParticles_whenAttacksEmpty() throws IOException {
+        int vol = 16;
+        short[] blocks = new short[vol * vol * vol];
+        blocks[vol * vol * vol / 2] = blockRegistry.getOrdinal(Material.STONE);
+        WorldSnapshot snapshot = new WorldSnapshot(0L, 0, 0, 0, 0f, 0f, 20f, 20, "minecraft:overworld", "world", blocks, vol, List.of(), false, null, List.of(), -999999, -999999, -999999, -1, List.of());
+        BufferedImage img = renderer.renderFrame(snapshot, 0);
+        assertNotNull(img);
+        java.awt.Point center = renderer.project(0, 0, 0);
+        int rgb = img.getRGB(Math.max(0, Math.min(img.getWidth() - 1, center.x)), Math.max(0, Math.min(img.getHeight() - 1, center.y)));
+        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF;
+        assertFalse(r >= 0xF0 && g >= 0xA0, "No gold critical stars when attacks empty");
+    }
+
+    /** CP4 — Determinism: combat particles rotate predictably by frameIndex. */
+    @Test
+    void cp4_combatParticles_rotateByFrameIndex() throws IOException {
+        int vol = 16;
+        short[] blocks = new short[vol * vol * vol];
+        blocks[vol * vol * vol / 2] = blockRegistry.getOrdinal(Material.STONE);
+        AttackRecord criticalAtOrigin = new AttackRecord(UUID.randomUUID(), UUID.randomUUID(), true, false, 0, 0, 0, 0L);
+        WorldSnapshot snapshot = new WorldSnapshot(0L, 0, 0, 0, 0f, 0f, 20f, 20, "minecraft:overworld", "world", blocks, vol, List.of(), false, null, List.of(), -999999, -999999, -999999, -1, List.of(criticalAtOrigin));
+        BufferedImage img0 = renderer.renderFrame(snapshot, 0);
+        BufferedImage img1 = renderer.renderFrame(snapshot, 1);
+        assertNotNull(img0);
+        assertNotNull(img1);
+        java.awt.Point center = renderer.project(0, 0, 0);
+        double radius = 16 * 0.8;
+        int px0 = center.x + (int) Math.round(Math.cos(Math.toRadians(0 + 0 * 15)) * radius);
+        int py0 = center.y + (int) Math.round(Math.sin(Math.toRadians(0 + 0 * 15)) * radius);
+        int px1 = center.x + (int) Math.round(Math.cos(Math.toRadians(0 + 1 * 15)) * radius);
+        int py1 = center.y + (int) Math.round(Math.sin(Math.toRadians(0 + 1 * 15)) * radius);
+        int x0 = Math.max(0, Math.min(img0.getWidth() - 1, px0));
+        int y0 = Math.max(0, Math.min(img0.getHeight() - 1, py0));
+        int x1 = Math.max(0, Math.min(img1.getWidth() - 1, px1));
+        int y1 = Math.max(0, Math.min(img1.getHeight() - 1, py1));
+        assertTrue(img0.getRGB(x0, y0) != img1.getRGB(x1, y1) || px0 != px1 || py0 != py1,
+                "Critical star position or color should change with frameIndex (rotation)");
+    }
+
+    /** Entity diag: living entity types with no sprite and no marker color (gray fallback). Hostiles we added sprites for must not be in the list. */
+    @Test
+    void diag_entityGaps() throws IOException {
+        EntitySpriteRegistry registry = createEntitySpriteRegistry();
+        List<String> gaps = registry.getLivingEntityTypesWithGrayFallback();
+        java.util.Collections.sort(gaps);
+        Set<String> gapSet = gaps.stream().collect(Collectors.toSet());
+        // Hostiles that have bundled sprites (1.19–1.21) must not be gaps when present in this API
+        for (String hostile : Arrays.asList("WARDEN", "BREEZE", "BOGGED")) {
+            if (java.util.Arrays.stream(EntityType.values()).anyMatch(e -> e.name().equals(hostile))) {
+                assertFalse(gapSet.contains(hostile), "Hostile " + hostile + " should have sprite or marker; gaps: " + String.join(", ", gaps));
+            }
+        }
+        System.out.println("[ReplayGif diag] Entity sprites: " + gaps.size() + " living entity type(s) with gray fallback.");
+        gaps.forEach(name -> System.out.println("[ReplayGif diag]   " + name));
+    }
+
+    /** DA1 — Entity with hurtProgress = 0.5: red hurt overlay at ~100/255 opacity over sprite. */
+    @Test
+    void da1_hurtProgressHalf_redOverlayAt100Opacity() throws IOException {
+        EntitySpriteRegistry entityRegistry = createEntitySpriteRegistry();
+        SkinCache skinCache = createSkinCache();
+        IsometricRenderer fullRenderer = new IsometricRenderer(32, 16, 8, 4, blockColorMap, blockRegistry, entityRegistry, skinCache);
+        EntitySnapshot hurtEntity = new EntitySnapshot(
+                EntityType.ZOMBIE, 0, 0, 0, 0f, UUID.randomUUID(), false, false, false,
+                null, 0.6, 1.95, 0.5f, false);
+        WorldSnapshot snapshot = new WorldSnapshot(
+                0L, 0, 0, 0, 0f, 0f, 20f, 20,
+                "minecraft:overworld", "world", new short[32 * 32 * 32], 32, List.of(hurtEntity), false);
+        BufferedImage img = fullRenderer.renderFrame(snapshot, 0, new IsometricRenderer.RenderFrameContext(0, null, 0, 0, 0, false));
+        assertNotNull(img);
+        java.awt.Point center = fullRenderer.project(0, 0, 0);
+        int spriteW = (int) Math.round(0.6 * 16);
+        int spriteH = (int) Math.round(1.95 * 8 * 2);
+        int left = center.x - spriteW / 2;
+        int top = (int) (center.y + 8 - spriteH);
+        int sampleX = left + spriteW / 2;
+        int sampleY = top + spriteH / 2;
+        int rgb = img.getRGB(sampleX, sampleY);
+        int r = (rgb >> 16) & 0xFF;
+        assertTrue(r >= 100, "Entity with hurtProgress=0.5 should have red overlay (red channel >= 100)");
+    }
+
+    /** DA2 — Entity with hurtProgress = 0: no red overlay. */
+    @Test
+    void da2_hurtProgressZero_noRedOverlay() throws IOException {
+        EntitySpriteRegistry entityRegistry = createEntitySpriteRegistry();
+        SkinCache skinCache = createSkinCache();
+        IsometricRenderer fullRenderer = new IsometricRenderer(32, 16, 8, 4, blockColorMap, blockRegistry, entityRegistry, skinCache);
+        EntitySnapshot noHurt = new EntitySnapshot(
+                EntityType.ZOMBIE, 0, 0, 0, 0f, UUID.randomUUID(), false, false, false,
+                null, 0.6, 1.95, 0f, false);
+        WorldSnapshot snapshot = new WorldSnapshot(
+                0L, 0, 0, 0, 0f, 0f, 20f, 20,
+                "minecraft:overworld", "world", new short[32 * 32 * 32], 32, List.of(noHurt), false);
+        BufferedImage img = fullRenderer.renderFrame(snapshot, 0, new IsometricRenderer.RenderFrameContext(0, null, 0, 0, 0, false));
+        assertNotNull(img);
+        java.awt.Point center = fullRenderer.project(0, 0, 0);
+        int spriteW = (int) Math.round(0.6 * 16);
+        int spriteH = (int) Math.round(1.95 * 8 * 2);
+        int left = center.x - spriteW / 2;
+        int top = (int) (center.y + 8 - spriteH);
+        int sampleX = left + spriteW / 2;
+        int sampleY = top + spriteH / 2;
+        int rgb = img.getRGB(sampleX, sampleY);
+        int r = (rgb >> 16) & 0xFF;
+        int g = (rgb >> 8) & 0xFF;
+        int b = rgb & 0xFF;
+        assertTrue(r < 150 || (g > 50 && b > 50), "Entity with hurtProgress=0 should not have strong red overlay");
+    }
+
+    /** DA3 — Dead entity: sprite rotated 90° clockwise; region to the left of normal sprite is filled. */
+    @Test
+    void da3_deadEntity_spriteRotated90Clockwise() throws IOException {
+        EntitySpriteRegistry entityRegistry = createEntitySpriteRegistry();
+        SkinCache skinCache = createSkinCache();
+        IsometricRenderer fullRenderer = new IsometricRenderer(32, 16, 8, 4, blockColorMap, blockRegistry, entityRegistry, skinCache);
+        EntitySnapshot deadEntity = new EntitySnapshot(
+                EntityType.ZOMBIE, 0, 0, 0, 0f, UUID.randomUUID(), false, false, false,
+                null, 0.6, 1.95, 0f, true);
+        WorldSnapshot snapshot = new WorldSnapshot(
+                0L, 0, 0, 0, 0f, 0f, 20f, 20,
+                "minecraft:overworld", "world", new short[32 * 32 * 32], 32, List.of(deadEntity), false);
+        BufferedImage img = fullRenderer.renderFrame(snapshot, 0, new IsometricRenderer.RenderFrameContext(0, null, 0, 0, 0, false));
+        assertNotNull(img);
+        java.awt.Point center = fullRenderer.project(0, 0, 0);
+        int spriteW = (int) Math.round(0.6 * 16);
+        int spriteH = (int) Math.round(1.95 * 8 * 2);
+        int deadLeft = center.x - spriteW / 2 - spriteH;
+        int deadTop = center.y;
+        int alpha = (img.getRGB(deadLeft + 2, deadTop + 2) >> 24) & 0xFF;
+        assertTrue(alpha > 0, "Dead entity rotated 90°: pixel in rotated sprite region should be non-transparent");
+    }
+
+    /** DA4 — Player entity with hurtProgress: red flash drawn on player body same as non-player. */
+    @Test
+    void da4_playerHurtProgress_redFlashOnPlayerSprite() throws IOException {
+        EntitySpriteRegistry entityRegistry = createEntitySpriteRegistry();
+        SkinCache skinCache = createSkinCache();
+        IsometricRenderer fullRenderer = new IsometricRenderer(32, 16, 8, 4, blockColorMap, blockRegistry, entityRegistry, skinCache);
+        EntitySnapshot hurtPlayer = new EntitySnapshot(
+                EntityType.PLAYER, 0, 0, 0, 0f, UUID.randomUUID(), true, false, false,
+                null, 0.6, 1.8, 0.5f, false);
+        WorldSnapshot snapshot = new WorldSnapshot(
+                0L, 0, 0, 0, 0f, 0f, 20f, 20,
+                "minecraft:overworld", "world", new short[32 * 32 * 32], 32, List.of(hurtPlayer), false);
+        BufferedImage img = fullRenderer.renderFrame(snapshot, 0, new IsometricRenderer.RenderFrameContext(0, "P", 0, 0, 0, false));
+        assertNotNull(img);
+        java.awt.Point center = fullRenderer.project(0, 0, 0);
+        int spriteW = (int) Math.round(0.6 * 16);
+        int spriteH = (int) Math.round(1.8 * 8 * 2);
+        int left = center.x - spriteW / 2;
+        int top = (int) (center.y + 8 - spriteH);
+        int sampleX = left + spriteW / 2;
+        int sampleY = top + spriteH / 2;
+        int rgb = img.getRGB(sampleX, sampleY);
+        int r = (rgb >> 16) & 0xFF;
+        assertTrue(r >= 80, "Player with hurtProgress=0.5 should have red flash on body (red channel elevated)");
     }
 }

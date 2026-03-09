@@ -3,9 +3,11 @@
 # Triggers reference profile names; all targets in the profile execute.
 # Every profile name referenced in triggers.yml must exist here.
 
-# Example: default profile with no targets (add Discord/Filesystem/Generic as needed).
+# Default profile: writes to plugin directory so /replaygif test <player> works without setup.
 profiles:
-  default: []
+  default:
+    - type: filesystem
+      path_template: "gifs/{world}/{player}_{timestamp}.gif"
   # Example Discord webhook (uncomment and set url):
   # discord_example:
   #   - type: discord_webhook

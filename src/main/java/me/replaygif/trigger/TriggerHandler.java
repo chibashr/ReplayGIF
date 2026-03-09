@@ -151,6 +151,9 @@ public final class TriggerHandler {
                     lastAliveRelX, lastAliveRelY, lastAliveRelZ,
                     allFramesDead);
 
+            // e2. Stage 0.5: pre-render hurt/death particle analysis
+            renderer.analyzeHurtDeath(frames);
+
             // f. Render each frame
             List<BufferedImage> images = new ArrayList<>(frames.size());
             for (int i = 0; i < frames.size(); i++) {

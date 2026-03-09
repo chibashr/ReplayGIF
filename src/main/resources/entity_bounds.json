@@ -1,5 +1,17 @@
 {
+  "FISHING_HOOK": { "width": 0.25, "height": 0.25 },
   "ZOMBIE": { "width": 0.6, "height": 1.95 },
   "SKELETON": { "width": 0.6, "height": 1.99 },
-  "PLAYER": { "width": 0.6, "height": 1.8 }
+  "PLAYER": { "width": 0.6, "height": 1.8 },
+  "ALLAY": { "width": 0.35, "height": 0.6, "color": "#8B9DC3" },
+  "ARMADILLO": { "width": 0.9, "height": 0.75, "color": "#8B7355" },
+  "BOGGED": { "width": 0.6, "height": 1.99, "color": "#6B8E23" },
+  "BREEZE": { "width": 0.6, "height": 1.8, "color": "#87CEEB" },
+  "CAMEL": { "width": 1.7, "height": 2.375, "color": "#C19A6B" },
+  "FROG": { "width": 0.5, "height": 0.5, "color": "#3DD68C" },
+  "SNIFFER": { "width": 1.9, "height": 1.75, "color": "#8B6914" },
+  "TADPOLE": { "width": 0.35, "height": 0.3, "color": "#2D5016" },
+  "WARDEN": { "width": 0.9, "height": 2.9, "color": "#2C2C2C" },
+  "WIND_CHARGE": { "width": 0.25, "height": 0.25, "color": "#87CEEB" },
+  "BREEZE_WIND_CHARGE": { "width": 0.25, "height": 0.25, "color": "#87CEEB" }
 }

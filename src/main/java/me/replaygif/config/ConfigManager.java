@@ -249,6 +249,10 @@ public class ConfigManager {
         return getString(rendererConfig, "block_colors_path", "block_colors.json", RENDERER);
     }
 
+    public boolean getBlockTexturesEnabled() {
+        return getBoolean(rendererConfig, "block_textures_enabled", true, RENDERER);
+    }
+
     // ---------- outputs.yml ----------
 
     /**

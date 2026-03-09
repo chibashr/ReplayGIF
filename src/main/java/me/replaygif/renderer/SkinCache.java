@@ -25,6 +25,14 @@ import java.util.concurrent.Executors;
  * can draw player heads without blocking the main thread. Fetch is triggered on join and
  * stored with TTL so we don't re-fetch every frame; getFace returns empty until the async
  * load completes, then we use the placeholder so rendering never blocks on the network.
+ *
+ * <p>Uses {@link org.bukkit.entity.Player#getPlayerProfile()} (available since 1.18); we do not
+ * call {@code profile.complete()} so the main thread never blocks on profile lookup. On offline
+ * mode or private profiles, textures may be null/empty or getSkin() null — we log DEBUG and
+ * use the placeholder image.
+ *
+ * <p>{@link org.bukkit.profile.PlayerTextures#getSkin()} returns URL in 1.18 and 1.21; we
+ * normalize to URI for HttpRequest and support either type at runtime for version skew.
  */
 public class SkinCache {
 
@@ -58,26 +66,52 @@ public class SkinCache {
         this.ttlSeconds = ttlSeconds;
     }
 
-    /** Schedules an async fetch of the player's skin face; no-op if disabled or no skin URL. */
+    /** Schedules an async fetch of the player's skin face; no-op if disabled or no skin URL. Never blocks the main thread. */
     public void onPlayerJoin(Player player) {
         if (!enabled) {
             return;
         }
-        PlayerTextures textures = player.getPlayerProfile().getTextures();
+        PlayerTextures textures;
+        try {
+            textures = player.getPlayerProfile().getTextures();
+        } catch (RuntimeException e) {
+            plugin.getSLF4JLogger().debug("No textures for {} (incomplete profile or offline); using placeholder", player.getName());
+            return;
+        }
         if (textures == null || textures.isEmpty()) {
-            return; // Private/hidden skin profile: Mojang returns no textures; we skip fetch and use placeholder in getFace()
+            plugin.getSLF4JLogger().debug("No skin URL for {} (private/offline profile); using placeholder", player.getName());
+            return;
+        }
+        Object skinRef = textures.getSkin();
+        if (skinRef == null) {
+            plugin.getSLF4JLogger().debug("No skin URL for {} (offline or no texture); using placeholder", player.getName());
+            return;
+        }
+        URI uri = toUri(skinRef);
+        if (uri == null) {
+            plugin.getSLF4JLogger().debug("Could not convert skin reference for {} to URI; using placeholder", player.getName());
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        executor.submit(() -> fetchAndCache(uuid, uri));
+    }
+
+    /** Converts getSkin() result to URI; getSkin() returns URL in 1.18/1.21, possibly URI in other builds. */
+    private static URI toUri(Object skinRef) {
+        if (skinRef == null) {
+            return null;
         }
         try {
-            java.net.URL skinUrl = textures.getSkin();
-            if (skinUrl == null) {
-                return;
+            if (skinRef instanceof java.net.URL) {
+                return ((java.net.URL) skinRef).toURI();
             }
-            URI uri = skinUrl.toURI();
-            UUID uuid = player.getUniqueId();
-            executor.submit(() -> fetchAndCache(uuid, uri));
-        } catch (URISyntaxException | RuntimeException e) {
-            plugin.getSLF4JLogger().debug("Could not get skin URL for {}", player.getName(), e); // Offline mode or invalid UUID: session server may reject; getFace() returns empty → placeholder used
+            if (skinRef instanceof URI) {
+                return (URI) skinRef;
+            }
+        } catch (URISyntaxException e) {
+            return null;
         }
+        return null;
     }
 
     private void fetchAndCache(UUID uuid, URI skinUrl) {

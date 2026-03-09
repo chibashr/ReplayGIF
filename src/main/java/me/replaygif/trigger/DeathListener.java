@@ -1,5 +1,6 @@
 package me.replaygif.trigger;
 
+import me.replaygif.compat.AdventureTextUtil;
 import me.replaygif.config.TriggerRule;
 import me.replaygif.config.TriggerRuleRegistry;
 import net.kyori.adventure.text.Component;
@@ -90,18 +91,26 @@ public final class DeathListener implements Listener {
         triggerHandler.handle(context);
     }
 
-    /** Resolves death message for event label; fallback to "{player} died" so we always have a non-null label. */
+    /** Resolves death message for event label; fallback to "{player} died" so we always have a non-null label.
+     * Uses Adventure Component on Paper 1.18+; strips legacy § codes so no ChatColor appears in the label. */
     private String getDeathMessagePlainText(PlayerDeathEvent event, Player player) {
         try {
-            Component msg = event.deathMessage();
-            if (msg == null) {
+            Object raw = event.deathMessage();
+            if (raw == null) {
                 return player.getName() + " died";
             }
-            String plain = PlainTextComponentSerializer.plainText().serialize(msg);
+            String plain;
+            if (raw instanceof Component) {
+                plain = PlainTextComponentSerializer.plainText().serialize((Component) raw);
+            } else if (raw instanceof String) {
+                plain = (String) raw;
+            } else {
+                plain = raw.toString();
+            }
             if (plain == null || plain.isBlank()) {
                 return player.getName() + " died";
             }
-            return plain;
+            return AdventureTextUtil.stripLegacyFormatting(plain);
         } catch (Throwable t) {
             logger.debug("Could not get death message, using fallback", t);
             return player.getName() + " died";

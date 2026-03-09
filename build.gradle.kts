@@ -1,3 +1,5 @@
+import java.util.zip.ZipFile
+
 plugins {
     java
 }
@@ -39,4 +41,44 @@ tasks.jar {
     archiveBaseName.set("ReplayGif")
     archiveVersion.set(project.version.toString())
     destinationDirectory.set(file("build/libs"))
+    exclude("me/replaygif/tools/**")
+}
+
+// Generate placeholder crack_stage_0–9.png (16×16) for block break overlay. Run before build.
+tasks.register<JavaExec>("generateCrackPlaceholders") {
+    group = "build"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("me.replaygif.tools.GenerateCrackPlaceholders")
+    args(project.layout.projectDirectory.dir("src/main/resources").toString())
+}
+
+// Extract 1.21 block textures from Minecraft client JAR into src/main/resources/block_textures/
+// so they are bundled in the plugin. Run: ./gradlew extractBlockTextures -PclientJar=/path/to/1.21.jar
+// Client JAR is typically at .minecraft/versions/1.21/<version>.jar
+tasks.register("extractBlockTextures") {
+    doLast {
+        val clientJar = project.findProperty("clientJar") as String?
+        if (clientJar.isNullOrBlank()) {
+            logger.warn("extractBlockTextures: set -PclientJar=/path/to/1.21.jar to extract block textures")
+            return@doLast
+        }
+        val destDir = file("src/main/resources/block_textures")
+        destDir.mkdirs()
+        val zip = ZipFile(clientJar.trim())
+        try {
+            for (entry in zip.entries()) {
+                if (!entry.isDirectory && entry.name.startsWith("assets/minecraft/textures/block/") && entry.name.endsWith(".png")) {
+                    val name = entry.name.substringAfterLast('/')
+                    zip.getInputStream(entry).use { input: java.io.InputStream ->
+                        file("$destDir/$name").outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+            }
+        } finally {
+            zip.close()
+        }
+        logger.lifecycle("Extracted block textures to {}", destDir)
+    }
 }
