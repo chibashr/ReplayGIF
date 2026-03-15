@@ -3,7 +3,7 @@ version: '1.0.0'
 main: com.replayplugin.ReplayPlugin
 api-version: '1.21'
 description: Captures rolling world-state snapshots and renders isometric GIF replays of notable in-game events.
-authors: []
+authors: [chibashr]
 website: ''
 
 depend: []

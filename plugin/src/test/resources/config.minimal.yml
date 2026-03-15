@@ -1,0 +1,4 @@
+# Minimal - only required / no optional (CFG-002)
+triggers:
+  player_death:
+    event: PlayerDeathEvent

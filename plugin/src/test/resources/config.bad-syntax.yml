@@ -1,0 +1,6 @@
+sidecar_max_heap_mb: 256
+triggers:
+  player_death:
+    event: PlayerDeathEvent
+    enabled: true
+invalid: yaml: [unclosed

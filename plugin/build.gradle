@@ -1,0 +1,38 @@
+plugins {
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+def paperVersion = System.getProperty('paperVersion', '1.21.11-R0.1-SNAPSHOT')
+
+dependencies {
+    compileOnly "io.papermc.paper:paper-api:${paperVersion}"
+    compileOnly 'net.luckperms:api:5.4'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+
+    testImplementation "io.papermc.paper:paper-api:${paperVersion}"
+    testImplementation 'com.github.seeseemelk:MockBukkit-v1.21:3.133.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'org.mockito:mockito-core:5.11.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.11.0'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    testLogging { events 'passed', 'skipped', 'failed'; showStandardStreams = true }
+}
+
+shadowJar {
+    archiveBaseName = 'ReplayPlugin'
+    // Bundle the sidecar JAR as a resource
+    from(project(':sidecar').tasks.named('jar')) {
+        into 'sidecar'
+        rename { 'sidecar.jar' }
+    }
+    dependencies {
+        exclude(dependency('io.papermc.paper:paper-api'))
+        exclude(dependency('net.luckperms:api'))
+    }
+    mergeServiceFiles()
+}

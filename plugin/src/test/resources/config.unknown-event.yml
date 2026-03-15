@@ -1,0 +1,10 @@
+# CFG-003: unknown event class
+sidecar_max_heap_mb: 256
+max_queue_size: 5
+triggers:
+  good:
+    event: PlayerDeathEvent
+    enabled: true
+  bad:
+    event: UnknownEventClassXYZ
+    enabled: true
