@@ -1,0 +1,8 @@
+{
+  "player_uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+  "event_type": "PlayerDeathEvent",
+  "timestamp": "20260314-153042",
+  "render_config": {
+    "fps": 10,
+    "pixels_per_block": 32
+    INVALID JSON HERE — missing closing brace and truncated intentionally

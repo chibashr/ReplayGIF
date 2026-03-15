@@ -1,0 +1,21 @@
+# config.test.yml — used by unit and integration tests only.
+# Reduced capture windows, no cooldowns, disk-only output.
+
+sidecar_max_heap_mb: 256
+max_queue_size: 5
+
+triggers:
+  player_death:
+    event: PlayerDeathEvent
+    enabled: true
+    pre_seconds: 2
+    post_seconds: 1
+    radius_chunks: 2
+    capture_rate_ticks: 2
+    fps: 10
+    pixels_per_block: 32
+    cooldown:
+      per_player_seconds: 0
+      global_seconds: 0
+    destinations:
+      - type: disk

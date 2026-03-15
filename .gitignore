@@ -1,0 +1,33 @@
+# --- Build outputs ---
+**/build/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# --- Gradle ---
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# --- Test environment ---
+/tmp/replay-test/
+integration-tests/.env.test
+integration-tests/.env.test.local
+**/build/reports/
+**/build/test-results/
+sidecar/src/test/fixtures/extracted/
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/
+*.class
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Plugin runtime artifacts (never commit these) ---
+plugins/ReplayPlugin/assets/
+plugins/ReplayPlugin/sidecar/
+plugins/ReplayPlugin/replays/

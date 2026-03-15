@@ -1,0 +1,170 @@
+{
+  "player_uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+  "event_type": "PlayerDeathEvent",
+  "timestamp": "20260314-153042",
+  "render_config": {
+    "fps": 10,
+    "pixels_per_block": 32,
+    "capture_radius_chunks": 5,
+    "camera_mode": "follow_player",
+    "cutout_enabled": true,
+    "output_destinations": [
+      {
+        "type": "disk"
+      }
+    ]
+  },
+  "pre_frames": [
+    {
+      "frame_index": 0,
+      "captured_at_tick": 1000,
+      "entity_state": {
+        "x": 128.5,
+        "y": 64.0,
+        "z": -200.3,
+        "yaw": 45.0,
+        "pitch": -10.0,
+        "pose": "STANDING",
+        "equipment": {
+          "main_hand": "minecraft:diamond_sword",
+          "off_hand": "minecraft:shield",
+          "head": "minecraft:diamond_helmet",
+          "chest": "minecraft:diamond_chestplate",
+          "legs": "minecraft:diamond_leggings",
+          "feet": "minecraft:diamond_boots"
+        },
+        "skin_texture_url": "https://textures.minecraft.net/texture/example"
+      },
+      "chunks": [
+        {
+          "chunk_x": 8,
+          "chunk_z": -13,
+          "biome": "minecraft:plains",
+          "blocks": [
+            {
+              "x": 128,
+              "y": 63,
+              "z": -200,
+              "block_id": "minecraft:grass_block",
+              "block_state_properties": {
+                "snowy": "false"
+              },
+              "sky_light": 15,
+              "block_light": 0
+            },
+            {
+              "x": 128,
+              "y": 64,
+              "z": -200,
+              "block_id": "minecraft:air",
+              "block_state_properties": {},
+              "sky_light": 15,
+              "block_light": 0
+            },
+            {
+              "x": 129,
+              "y": 63,
+              "z": -200,
+              "block_id": "minecraft:stone",
+              "block_state_properties": {},
+              "sky_light": 0,
+              "block_light": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "frame_index": 1,
+      "captured_at_tick": 1002,
+      "entity_state": {
+        "x": 128.5,
+        "y": 63.5,
+        "z": -200.3,
+        "yaw": 45.0,
+        "pitch": 5.0,
+        "pose": "STANDING",
+        "equipment": {
+          "main_hand": "minecraft:diamond_sword",
+          "off_hand": "minecraft:shield",
+          "head": "minecraft:diamond_helmet",
+          "chest": "minecraft:diamond_chestplate",
+          "legs": "minecraft:diamond_leggings",
+          "feet": "minecraft:diamond_boots"
+        },
+        "skin_texture_url": "https://textures.minecraft.net/texture/example"
+      },
+      "chunks": [
+        {
+          "chunk_x": 8,
+          "chunk_z": -13,
+          "biome": "minecraft:plains",
+          "blocks": [
+            {
+              "x": 128,
+              "y": 63,
+              "z": -200,
+              "block_id": "minecraft:grass_block",
+              "block_state_properties": {
+                "snowy": "false"
+              },
+              "sky_light": 15,
+              "block_light": 0
+            },
+            {
+              "x": 128,
+              "y": 64,
+              "z": -200,
+              "block_id": "minecraft:air",
+              "block_state_properties": {},
+              "sky_light": 15,
+              "block_light": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "frame_index": 2,
+      "captured_at_tick": 1004,
+      "entity_state": {
+        "x": 128.5,
+        "y": 62.0,
+        "z": -200.3,
+        "yaw": 45.0,
+        "pitch": 30.0,
+        "pose": "STANDING",
+        "equipment": {
+          "main_hand": "minecraft:diamond_sword",
+          "off_hand": "minecraft:shield",
+          "head": "minecraft:diamond_helmet",
+          "chest": "minecraft:diamond_chestplate",
+          "legs": "minecraft:diamond_leggings",
+          "feet": "minecraft:diamond_boots"
+        },
+        "skin_texture_url": "https://textures.minecraft.net/texture/example"
+      },
+      "chunks": [
+        {
+          "chunk_x": 8,
+          "chunk_z": -13,
+          "biome": "minecraft:plains",
+          "blocks": [
+            {
+              "x": 128,
+              "y": 63,
+              "z": -200,
+              "block_id": "minecraft:grass_block",
+              "block_state_properties": {
+                "snowy": "false"
+              },
+              "sky_light": 15,
+              "block_light": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "post_frames": []
+}

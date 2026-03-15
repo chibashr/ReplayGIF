@@ -1,0 +1,55 @@
+name: ReplayPlugin
+version: '1.0.0'
+main: com.replayplugin.ReplayPlugin
+api-version: '1.21'
+description: Captures rolling world-state snapshots and renders isometric GIF replays of notable in-game events.
+authors: []
+website: ''
+
+depend: []
+softdepend:
+  - LuckPerms
+
+commands:
+  replay:
+    description: Root command for the Replay plugin.
+    usage: |
+      /replay reload
+      /replay trigger <player> <event>
+      /replay trigger enable <event>
+      /replay trigger disable <event>
+      /replay queue
+      /replay queue clear
+    permission: replay.admin
+    aliases: []
+
+permissions:
+  replay.admin:
+    description: Grants access to all replay commands and in-game error/admin notifications.
+    default: op
+    children:
+      replay.command.reload: true
+      replay.command.trigger: true
+      replay.command.queue: true
+      replay.command.queue.clear: true
+      replay.command.trigger.toggle: true
+
+  replay.command.reload:
+    description: Allows use of /replay reload.
+    default: op
+
+  replay.command.trigger:
+    description: Allows use of /replay trigger <player> <event>.
+    default: op
+
+  replay.command.queue:
+    description: Allows use of /replay queue.
+    default: op
+
+  replay.command.queue.clear:
+    description: Allows use of /replay queue clear.
+    default: op
+
+  replay.command.trigger.toggle:
+    description: Allows use of /replay trigger enable and /replay trigger disable.
+    default: op

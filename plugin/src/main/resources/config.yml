@@ -1,0 +1,61 @@
+# ReplayPlugin config.yml
+# All duration values are in seconds unless otherwise noted.
+# Changes take effect on /replay reload.
+
+# Maximum JVM heap for the sidecar renderer process.
+sidecar_max_heap_mb: 512
+
+# Maximum number of render jobs that can be queued at once.
+# When the queue is full, new jobs are dropped and logged.
+max_queue_size: 10
+
+# --- Trigger definitions ---
+# Each trigger listens for a Paper event by class name.
+# Unknown event class names are rejected at startup with a descriptive error.
+# Per-trigger values override the global defaults above.
+#
+# Supported destination types:
+#   - type: disk
+#   - type: discord_webhook
+#       url: "https://discord.com/api/webhooks/..."
+#   - type: in_game
+#       (sends a clickable chat link to the triggering player if they are online)
+
+triggers:
+  player_death:
+    event: PlayerDeathEvent
+    enabled: true
+
+    # Seconds of world-state to capture before the event.
+    pre_seconds: 5
+
+    # Seconds of world-state to capture after the event.
+    post_seconds: 2
+
+    # Capture radius in chunks (radius, not diameter).
+    # Total capture area = (radius*2+1)^2 chunks, e.g. radius 5 = 11x11 chunks.
+    radius_chunks: 5
+
+    # How often to capture a world-state snapshot, in ticks.
+    # 2 ticks = 10 snapshots/second at 20 TPS.
+    capture_rate_ticks: 2
+
+    # Output GIF frame rate.
+    fps: 10
+
+    # GIF resolution: pixels rendered per Minecraft block.
+    pixels_per_block: 32
+
+    cooldown:
+      # Minimum seconds between replays for the same player. 0 = disabled.
+      per_player_seconds: 0
+      # Minimum seconds between any two replays globally. 0 = disabled.
+      global_seconds: 0
+
+    destinations:
+      - type: disk
+      # Uncomment to also post to a Discord webhook:
+      # - type: discord_webhook
+      #     url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+      # Uncomment to send a clickable link in chat to the triggering player:
+      # - type: in_game
