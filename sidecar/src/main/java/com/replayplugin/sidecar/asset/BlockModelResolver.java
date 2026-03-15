@@ -146,7 +146,11 @@ public final class BlockModelResolver {
             if (texNode != null) {
                 for (var it = texNode.fields(); it.hasNext(); ) {
                     var e = it.next();
-                    textures.put(e.getKey(), e.getValue().asText());
+                    String key = e.getKey();
+                    String value = e.getValue().asText();
+                    if (value.startsWith("#") && value.equals("#" + key) && inheritedTextures.containsKey(key))
+                        continue;
+                    textures.put(key, value);
                 }
             }
             JsonNode parentNode = modelJson.get("parent");
@@ -154,7 +158,7 @@ public final class BlockModelResolver {
             Map<String, BufferedImage> resolvedTextures = new HashMap<>();
             if (parentNode != null) {
                 String parent = parentNode.asText();
-                BlockGeometry parentGeo = resolveModelChain(parent, new HashMap<>(), new ArrayList<>(visited));
+                BlockGeometry parentGeo = resolveModelChain(parent, textures, new ArrayList<>(visited));
                 if (parentGeo != null) {
                     elements.addAll(parentGeo.getElements());
                     resolvedTextures.putAll(parentGeo.getTextures());
@@ -169,7 +173,7 @@ public final class BlockModelResolver {
             }
             for (String texKey : textures.keySet()) {
                 if (resolvedTextures.containsKey(texKey)) continue;
-                String path = resolveTexturePath(textures.get(texKey), textures);
+                String path = resolveTexturePath(textures.get(texKey), textures, new HashSet<>());
                 if (path != null) {
                     try {
                         BufferedImage img = assetManager.getTexture(path);
@@ -211,13 +215,20 @@ public final class BlockModelResolver {
         return new BlockGeometry.Element(fromArr, toArr, faceMap);
     }
 
-    private String resolveTexturePath(String value, Map<String, String> textures) {
+    private String resolveTexturePath(String value, Map<String, String> textures, Set<String> resolving) {
         if (value == null) return null;
         if (value.startsWith("#")) {
-            return resolveTexturePath(textures.get(value.substring(1)), textures);
+            String key = value.substring(1);
+            if (resolving.contains(key)) return null;
+            resolving.add(key);
+            try {
+                return resolveTexturePath(textures.get(key), textures, resolving);
+            } finally {
+                resolving.remove(key);
+            }
         }
         if (value.contains(":")) {
-            return value; // e.g. minecraft:block/stone -> we pass to getTexture as block/stone or just stone
+            return value;
         }
         return "block/" + value;
     }

@@ -141,6 +141,6 @@ class AssetManagerTest {
         am.initialize(dataDir, "1.21");
         assertTrue(am.isFallbackMode());
 
-        assertThrows(AssetNotFoundException.class, () -> am.getTexture("block/nonexistent_tex"));
+        assertThrows(AssetNotFoundException.class, () -> am.getTexture("block/replay_plugin_nonexistent_sentinel_xyz"));
     }
 }

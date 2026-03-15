@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.imageio.ImageIO;
-import javax.imageio.stream.ImageInputStream;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -78,10 +77,12 @@ class GifEncoderTest {
         List<BufferedImage> frames = List.of(frame(16, 16, 0xff00ff00));
         Path out = tempDir.resolve("out.gif");
         GifEncoder.encode(frames, 10, out);
-        try (ImageInputStream iis = ImageIO.createImageInputStream(Files.newInputStream(out))) {
-            assertNotNull(iis);
-            assertTrue(iis.length() > 0);
-        }
+        assertTrue(Files.exists(out));
+        assertTrue(Files.size(out) > 0);
+        BufferedImage read = ImageIO.read(out.toFile());
+        assertNotNull(read);
+        assertEquals(16, read.getWidth());
+        assertEquals(16, read.getHeight());
     }
 
     @Test

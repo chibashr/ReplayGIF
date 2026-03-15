@@ -46,23 +46,18 @@ public final class OcclusionCuller {
         double rayDy = -RAY_DY;
         double rayDz = -RAY_DZ;
 
-        double tMin = Double.POSITIVE_INFINITY;
-        BlockPos firstHit = null;
-        for (BlockPos pos : allBlocks) {
-            double t = rayAABBEntry(rayOx, rayOy, rayOz, rayDx, rayDy, rayDz,
-                    pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1);
-            if (t >= 0 && t < tMin) {
-                tMin = t;
-                firstHit = pos;
-            }
-        }
+        double playerCx = playerX + 0.5;
+        double playerCy = playerY + 0.5;
+        double playerCz = playerZ + 0.5;
+        double tPlayer = rayDx != 0 ? (playerCx - rayOx) / rayDx
+                : rayDy != 0 ? (playerCy - rayOy) / rayDy
+                : (playerCz - rayOz) / rayDz;
 
         Set<BlockPos> occluded = new HashSet<>();
         for (BlockPos pos : allBlocks) {
-            if (pos.equals(firstHit)) continue;
             double t = rayAABBEntry(rayOx, rayOy, rayOz, rayDx, rayDy, rayDz,
                     pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1);
-            if (t >= 0) occluded.add(pos);
+            if (t >= 0 && t < tPlayer) occluded.add(pos);
         }
         return occluded;
     }

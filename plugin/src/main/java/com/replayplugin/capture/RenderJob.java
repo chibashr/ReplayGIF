@@ -1,6 +1,7 @@
 package com.replayplugin.capture;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
@@ -53,7 +54,9 @@ public final class RenderJob {
 
     /**
      * Output GIF filename per IPC: &lt;playerName&gt;_&lt;eventType&gt;_&lt;timestamp&gt;.gif
+     * Not serialized to JSON; computed from player_name, event_type, timestamp.
      */
+    @JsonIgnore
     public String getGifFilename() {
         return playerName + "_" + eventType + "_" + timestamp + ".gif";
     }

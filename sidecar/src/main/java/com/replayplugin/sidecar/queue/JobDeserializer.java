@@ -1,6 +1,7 @@
 package com.replayplugin.sidecar.queue;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.replayplugin.capture.RenderJob;
 
@@ -15,7 +16,8 @@ import java.util.logging.Logger;
 public final class JobDeserializer {
 
     private static final Logger LOG = Logger.getLogger(JobDeserializer.class.getName());
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
     /**
      * Deserialize job from JSON file. Returns empty and logs on JsonParseException; does not throw.
