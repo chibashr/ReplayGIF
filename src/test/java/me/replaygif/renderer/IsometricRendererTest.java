@@ -141,19 +141,18 @@ class IsometricRendererTest {
         int half = vol / 2;
         short stone = blockRegistry.getOrdinal(Material.STONE);
         short[] blocks = new short[vol * vol * vol];
-        // rel (5,0,5) -> volume (half+5, half, half+5) = (11, 6, 11)
-        int x1 = half + 5, y1 = half, z1 = half + 5;
+        // rel (5,1,5) culled (relY>0, relX+relZ=10>4); rel (2,0,2) visible (relX+relZ=4<=4)
+        int x1 = half + 5, y1 = half + 1, z1 = half + 5;
         blocks[x1 * vol * vol + y1 * vol + z1] = stone;
-        // rel (2,0,2) -> volume (half+2, half, half+2) = (8, 6, 8)
         int x2 = half + 2, y2 = half, z2 = half + 2;
         blocks[x2 * vol * vol + y2 * vol + z2] = stone;
 
-        IsometricRenderer cutRenderer = new IsometricRenderer(vol, 16, 8, 4, blockColorMap, blockRegistry);
+        IsometricRenderer cutRenderer = new IsometricRenderer(vol, 16, 8, 4, -1, blockColorMap, blockRegistry);
         WorldSnapshot snapshot = new WorldSnapshot(
                 0L, 0, 0, 0, 0f, 0f, 20f, 20,
                 "minecraft:overworld", "world", blocks, vol, List.of(), false);
         List<IsometricRenderer.BlockDrawEntry> drawList = cutRenderer.buildBlockDrawList(snapshot);
-        // Only the block at (2,0,2) should be in the list; (5,0,5) is culled because 5+5=10 > 4
+        // Only (2,0,2) drawn; (5,1,5) culled because relY>groundFullRelY and 5+5=10>4
         assertEquals(1, drawList.size(), "Exactly one block should be drawn (other culled)");
         assertEquals(2, drawList.get(0).relX());
         assertEquals(0, drawList.get(0).relY());
@@ -423,14 +422,16 @@ class IsometricRendererTest {
                         blocks[x * vol * vol + y * vol + z] = stone;
                 }
             }
-        IsometricRenderer caveRenderer = new IsometricRenderer(vol, 16, 8, 4, blockColorMap, blockRegistry);
+        IsometricRenderer caveRenderer = new IsometricRenderer(vol, 16, 8, 4, -1, blockColorMap, blockRegistry);
         WorldSnapshot snapshot = new WorldSnapshot(
                 0L, 0, 0, 0, 0f, 0f, 20f, 20,
                 "minecraft:overworld", "world", blocks, vol, List.of(), false);
         List<IsometricRenderer.BlockDrawEntry> drawList = caveRenderer.buildBlockDrawList(snapshot);
-        // Cut plane: only blocks with relX+relZ <= 4 are drawn
+        // Cut plane: blocks above ground (relY > -1) must have relX+relZ <= 4; ground (relY <= -1) is never culled
         for (IsometricRenderer.BlockDrawEntry e : drawList) {
-            assertTrue(e.relX() + e.relZ() <= 4, "Dollhouse cutout: drawn block must have relX+relZ <= cutOffset 4");
+            if (e.relY() > -1) {
+                assertTrue(e.relX() + e.relZ() <= 4, "Dollhouse cutout: block above ground must have relX+relZ <= cutOffset 4");
+            }
         }
         // At least one POINTED_DRIPSTONE in front half (not gray fallback: we use block_colors_defaults POINTED_DRIPSTONE)
         boolean hasDripstone = drawList.stream().anyMatch(e -> e.materialOrdinal() == dripstone);

@@ -12,6 +12,8 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -40,6 +42,8 @@ public class EntitySpriteRegistry {
     private static final double DEFAULT_HEIGHT = 1.8;
 
     private final JavaPlugin plugin;
+    private final Path entitiesCacheDir;
+    private final McAssetFetcher mcAssetFetcher;
     private final Map<EntityType, BufferedImage> spriteByType = new HashMap<>();
     private final Map<EntityType, BoundingBox> boundsByType = new HashMap<>();
     private final Map<EntityType, Color> markerColorByType = new HashMap<>();
@@ -49,14 +53,31 @@ public class EntitySpriteRegistry {
     /**
      * Loads bounds and sprites at construction. clientJarPath optional; if valid we read
      * from assets/minecraft/textures/entity/ in the jar, else we use plugin resources.
+     * When entitiesCacheDir is non-null, getSprite lazily loads missing sprites from it.
+     * When mcAssetFetcher is non-null, getSprite lazily fetches from mcasset.cloud on cache miss.
      *
-     * @param plugin        for getResource() and logger
-     * @param clientJarPath path to client jar or null/empty to use bundled sprites only
+     * @param plugin           for getResource() and logger
+     * @param clientJarPath    path to client jar or null/empty to use bundled sprites only
+     * @param entitiesCacheDir optional path to cached entity textures; null to skip
+     * @param mcAssetFetcher   optional fetcher for mcasset.cloud; null to skip
      */
-    public EntitySpriteRegistry(JavaPlugin plugin, String clientJarPath) throws IOException {
+    public EntitySpriteRegistry(JavaPlugin plugin, String clientJarPath, Path entitiesCacheDir,
+                               McAssetFetcher mcAssetFetcher) throws IOException {
         this.plugin = plugin;
+        this.entitiesCacheDir = entitiesCacheDir;
+        this.mcAssetFetcher = mcAssetFetcher;
         loadBounds(plugin.getResource("entity_bounds.json"));
         loadSprites(plugin, clientJarPath);
+    }
+
+    /** With cache dir, no mcasset. */
+    public EntitySpriteRegistry(JavaPlugin plugin, String clientJarPath, Path entitiesCacheDir) throws IOException {
+        this(plugin, clientJarPath, entitiesCacheDir, null);
+    }
+
+    /** Backward compatibility: no entity cache, no mcasset. */
+    public EntitySpriteRegistry(JavaPlugin plugin, String clientJarPath) throws IOException {
+        this(plugin, clientJarPath, null, null);
     }
 
     private void loadBounds(InputStream in) throws IOException {
@@ -117,36 +138,56 @@ public class EntitySpriteRegistry {
                     }
                 }
                 fromJar = true;
-            } catch (IOException ignored) {
-                // fall through to bundled
-            }
-        }
-        if (!fromJar) {
-            for (EntityType type : EntityType.values()) {
-                String name = type.name().toLowerCase();
-                String path = (type == EntityType.FISHING_HOOK)
-                        ? BUNDLED_SPRITES_PREFIX + "fishing_bobber.png"
-                        : BUNDLED_SPRITES_PREFIX + name + ".png";
-                try (InputStream is = plugin.getResource(path)) {
-                    if (is != null) {
-                        BufferedImage img = ImageIO.read(is);
-                        if (img != null) {
-                            spriteByType.put(type, img);
-                        }
-                    }
-                }
+            } catch (IOException e) {
+                plugin.getSLF4JLogger().warn("Client jar not found or invalid at {}: {}. Using bundled sprites.", clientJarPath.trim(), e.getMessage());
             }
         }
         if (fromJar) {
             plugin.getSLF4JLogger().info("EntitySpriteRegistry: using client jar at {}", clientJarPath.trim());
         } else {
-            plugin.getSLF4JLogger().info("EntitySpriteRegistry: using bundled sprites (client jar not found or not configured).");
+            plugin.getSLF4JLogger().info("EntitySpriteRegistry: using mcasset + bundled (client jar not found or not configured).");
         }
     }
 
-    /** Sprite for this entity type; empty if not found (renderer uses placeholder). */
+    /** Sprite for this entity type; empty if not found (renderer uses placeholder). Load order: client jar (preloaded) → cache dir → mcasset → bundled. */
     public Optional<BufferedImage> getSprite(EntityType type) {
-        return Optional.ofNullable(spriteByType.get(type));
+        BufferedImage sprite = spriteByType.get(type);
+        if (sprite == null && entitiesCacheDir != null && Files.isDirectory(entitiesCacheDir)) {
+            sprite = loadSpriteFromCache(type);
+            if (sprite != null) spriteByType.put(type, sprite);
+        }
+        if (sprite == null && mcAssetFetcher != null) {
+            sprite = mcAssetFetcher.fetchEntity(type).orElse(null);
+            if (sprite != null) spriteByType.put(type, sprite);
+        }
+        if (sprite == null) {
+            sprite = loadFromBundled(type);
+            if (sprite != null) spriteByType.put(type, sprite);
+        }
+        return Optional.ofNullable(sprite);
+    }
+
+    private BufferedImage loadFromBundled(EntityType type) {
+        String path = (type == EntityType.FISHING_HOOK)
+                ? BUNDLED_SPRITES_PREFIX + "fishing_bobber.png"
+                : BUNDLED_SPRITES_PREFIX + type.name().toLowerCase() + ".png";
+        return loadImage(path);
+    }
+
+    private BufferedImage loadSpriteFromCache(EntityType type) {
+        String baseName = type == EntityType.FISHING_HOOK ? "fishing_bobber" : type.name().toLowerCase();
+        for (String name : new String[]{baseName, baseName.replace("_", "")}) {
+            Path file = entitiesCacheDir.resolve(name + ".png");
+            if (Files.exists(file)) {
+                try (InputStream is = Files.newInputStream(file)) {
+                    return ImageIO.read(is);
+                } catch (IOException e) {
+                    plugin.getSLF4JLogger().debug("Could not load entity sprite from cache for {}: {}", type, e.getMessage());
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /** Width and height in blocks for sprite scaling; default 0.6×1.8 when not in bounds file. */

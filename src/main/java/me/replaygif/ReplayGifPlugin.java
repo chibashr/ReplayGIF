@@ -21,7 +21,7 @@ import me.replaygif.renderer.HudResources;
 import me.replaygif.renderer.HurtParticleSynthesizer;
 import me.replaygif.renderer.IsometricRenderer;
 import me.replaygif.renderer.ItemTextureCache;
-import me.replaygif.renderer.MojangAssetDownloader;
+import me.replaygif.renderer.McAssetFetcher;
 import me.replaygif.renderer.SkinCache;
 import me.replaygif.trigger.DeathListener;
 import me.replaygif.trigger.DynamicListenerRegistry;
@@ -74,6 +74,7 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
     private BlockBreakTracker blockBreakTracker;
     private CombatEventTracker combatEventTracker;
     private ActionBarTracker actionBarTracker;
+    private McAssetFetcher mcAssetFetcher;
 
     @Override
     public void onEnable() {
@@ -112,19 +113,27 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         }
         // (BlockColorMap logs "BlockColorMap loaded." or "Generated block_colors.json...")
 
-        // 3b. BlockTextureRegistry — bundled 1.21 block textures (optional)
+        // McAssetFetcher — default source for entities, items, blocks when no client jar/resource pack
+        mcAssetFetcher = new McAssetFetcher(this, configManager.getDownloadAssetsVersion());
+        mcAssetFetcher.prefetchHudSprites();
+
+        // 3b. BlockTextureRegistry — resource pack → mcasset → bundled block textures (optional)
+        String resourcePackPath = resolveResourcePackPath(configManager.getResourcePackPath());
         blockTextureRegistry = null;
         if (configManager.getBlockTexturesEnabled()) {
             try {
-                blockTextureRegistry = new BlockTextureRegistry(this, blockRegistry);
+                blockTextureRegistry = new BlockTextureRegistry(this, blockRegistry, resourcePackPath, mcAssetFetcher);
             } catch (IOException e) {
                 getSLF4JLogger().warn("Block textures not available (run extractBlockTextures to bundle them): {}", e.getMessage());
             }
         }
 
-        // 4. EntitySpriteRegistry — client jar or bundled sprites + entity_bounds
+        // 4. EntitySpriteRegistry — client jar → bundled/cache → mcasset
+        Path entitiesCacheDir = configManager.isClientJarPathValid()
+                ? null
+                : getDataFolder().toPath().resolve("texture_cache").resolve("entities");
         try {
-            entitySpriteRegistry = new EntitySpriteRegistry(this, configManager.getClientJarPath());
+            entitySpriteRegistry = new EntitySpriteRegistry(this, configManager.getClientJarPath(), entitiesCacheDir, mcAssetFetcher);
         } catch (IOException e) {
             getSLF4JLogger().error("Failed to load EntitySpriteRegistry", e);
             throw new RuntimeException("EntitySpriteRegistry failed", e);
@@ -141,18 +150,12 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 configManager.getTileHeight());
         BufferedImage[] crackStages = loadCrackStages();
         Path mojangCacheDir = getDataFolder().toPath().resolve("texture_cache").resolve("items");
-        String resourcePackPath = resolveResourcePackPath(configManager.getResourcePackPath());
-        boolean needMojangDownload = resourcePackPath == null
-                && configManager.getClientJarPath().isBlank();
-        if (needMojangDownload) {
-            MojangAssetDownloader downloader = new MojangAssetDownloader(this, configManager.getDownloadAssetsVersion());
-            downloader.ensureTexturesAsync(r -> getServer().getScheduler().runTaskAsynchronously(this, r));
-        }
         ItemTextureCache itemTextureCache = new ItemTextureCache(this,
                 resourcePackPath,
                 configManager.getClientJarPath(),
-                mojangCacheDir);
-        HudRenderer hudRenderer = buildHudRenderer(itemTextureCache);
+                mojangCacheDir,
+                mcAssetFetcher);
+        HudRenderer hudRenderer = buildHudRenderer(itemTextureCache, resourcePackPath, mcAssetFetcher);
         IsometricRenderer isometricRenderer = new IsometricRenderer(
                 configManager.getVolumeSize(),
                 configManager.getTileWidth(),
@@ -166,7 +169,10 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
                 hurtParticleSynthesizer,
                 hudRenderer,
                 crackStages,
-                itemTextureCache);
+                itemTextureCache,
+                configManager.getGroundFullRelY(),
+                configManager.getViewCenterOffsetY(),
+                configManager.getBlockFaceCulling());
         getSLF4JLogger().info("IsometricRenderer ready.");
 
         // 7. GifEncoder
@@ -188,7 +194,7 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
         // 11. TriggerHandler
         triggerHandler = new TriggerHandler(
                 buffers, isometricRenderer, gifEncoder,
-                outputProfileRegistry, configManager, getSLF4JLogger());
+                outputProfileRegistry, configManager, mcAssetFetcher, getSLF4JLogger());
         getSLF4JLogger().info("TriggerHandler ready.");
 
         // 12. DeathListener
@@ -274,7 +280,12 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
             webhookInboundServer.stop();
             getSLF4JLogger().info("WebhookInboundServer stopped.");
         }
-        // 3. TriggerHandler — shutdown render pool
+        // 3. McAssetFetcher — shutdown prefetch pool
+        if (mcAssetFetcher != null) {
+            mcAssetFetcher.shutdown();
+            getSLF4JLogger().info("McAssetFetcher shut down.");
+        }
+        // 3b. TriggerHandler — shutdown render pool
         if (triggerHandler != null) {
             triggerHandler.shutdown();
         }
@@ -340,12 +351,13 @@ public final class ReplayGifPlugin extends JavaPlugin implements Listener {
     }
 
     /** Builds HudRenderer when hud_enabled; null otherwise (uses minimal HUD: action bar + boss bars). */
-    private HudRenderer buildHudRenderer(ItemTextureCache itemTextureCache) {
+    private HudRenderer buildHudRenderer(ItemTextureCache itemTextureCache, String resourcePackPath,
+                                          McAssetFetcher mcAssetFetcher) {
         if (!configManager.getHudEnabled()) {
             return null;
         }
         try {
-            HudResources resources = new HudResources(getClass());
+            HudResources resources = new HudResources(getClass(), resourcePackPath, configManager.getClientJarPath(), mcAssetFetcher);
             float opacity = configManager.getHudOpacity() / 100f;
             return new HudRenderer(
                     configManager.getTileWidth(),

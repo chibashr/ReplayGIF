@@ -14,9 +14,7 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
-import java.awt.Polygon;
 import java.awt.Point;
-import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
@@ -24,10 +22,16 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
 
 /**
  * Turns a list of WorldSnapshots into a list of BufferedImages (one per frame) using a fixed
@@ -63,10 +67,18 @@ public class IsometricRenderer {
     private final int tileWidth;
     private final int tileHeight;
     private final int cutOffset;
+    /** Blocks at relY <= this are never culled; full ground layer. */
+    private final int groundFullRelY;
+    /** Vertical view offset in blocks; positive = show more ground below subject. */
+    private final int viewCenterOffsetY;
+    /** When false, draw all 3 faces per block; when true, only visible faces (computeFaceVisibility). */
+    private final boolean blockFaceCulling;
     private final int imageWidth;
     private final int imageHeight;
     private final BlockColorMap blockColorMap;
     private final BlockRegistry blockRegistry;
+    /** Pre-computed occlusion: true if block occludes adjacent faces (avoids per-frame getMaterial/isTransparent calls). */
+    private final boolean[] occludesByOrdinal;
     private final BlockTextureRegistry blockTextureRegistry;
     private final EntitySpriteRegistry entitySpriteRegistry;
     private final SkinCache skinCache;
@@ -76,11 +88,19 @@ public class IsometricRenderer {
     private final BufferedImage[] crackStages;
     /** Optional item textures for dropped item rendering; null = fallback color rectangle. */
     private final ItemTextureCache itemTextureCache;
+    /** Cache of scaled textures (identity key) — textures scaled to tile dimensions are stable per renderer. */
+    private final Map<BufferedImage, BufferedImage> scaledTextureCache = new IdentityHashMap<>();
 
     /** Block-only renderer when entity/skin registries are not available. */
     public IsometricRenderer(int volumeSize, int tileWidth, int tileHeight, int cutOffset,
                             BlockColorMap blockColorMap, BlockRegistry blockRegistry) {
-        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, null, null, null, null, null, null, null);
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, null, null, null, null, null, null, null, -1, 0, true);
+    }
+
+    /** Block-only renderer with explicit groundFullRelY (for tests). */
+    public IsometricRenderer(int volumeSize, int tileWidth, int tileHeight, int cutOffset, int groundFullRelY,
+                            BlockColorMap blockColorMap, BlockRegistry blockRegistry) {
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, null, null, null, null, null, null, null, groundFullRelY, 0, true);
     }
 
     /**
@@ -91,7 +111,7 @@ public class IsometricRenderer {
     public IsometricRenderer(int volumeSize, int tileWidth, int tileHeight, int cutOffset,
                             BlockColorMap blockColorMap, BlockRegistry blockRegistry,
                             EntitySpriteRegistry entitySpriteRegistry, SkinCache skinCache) {
-        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, null, entitySpriteRegistry, skinCache, null, null, null, null);
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, null, entitySpriteRegistry, skinCache, null, null, null, null, 0, 0, true);
     }
 
     /**
@@ -101,7 +121,7 @@ public class IsometricRenderer {
                             BlockColorMap blockColorMap, BlockRegistry blockRegistry,
                             BlockTextureRegistry blockTextureRegistry,
                             EntitySpriteRegistry entitySpriteRegistry, SkinCache skinCache) {
-        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, null, null, null, null);
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, null, null, null, null, 0, 0, true);
     }
 
     /**
@@ -112,7 +132,7 @@ public class IsometricRenderer {
                             BlockTextureRegistry blockTextureRegistry,
                             EntitySpriteRegistry entitySpriteRegistry, SkinCache skinCache,
                             HurtParticleSynthesizer hurtParticleSynthesizer) {
-        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, hurtParticleSynthesizer, null, null, null);
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, hurtParticleSynthesizer, null, null, null, 0, 0, true);
     }
 
     /**
@@ -124,7 +144,21 @@ public class IsometricRenderer {
                             EntitySpriteRegistry entitySpriteRegistry, SkinCache skinCache,
                             HurtParticleSynthesizer hurtParticleSynthesizer,
                             BufferedImage[] crackStages) {
-        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, hurtParticleSynthesizer, null, crackStages, null);
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, hurtParticleSynthesizer, null, crackStages, null, 0, 0, true);
+    }
+
+    /**
+     * Full renderer with hurt/death synthesizer, no HUD/crack/item cache. Used by tests.
+     */
+    public IsometricRenderer(int volumeSize, int tileWidth, int tileHeight, int cutOffset,
+                            BlockColorMap blockColorMap, BlockRegistry blockRegistry,
+                            BlockTextureRegistry blockTextureRegistry,
+                            EntitySpriteRegistry entitySpriteRegistry, SkinCache skinCache,
+                            HurtParticleSynthesizer hurtParticleSynthesizer,
+                            HudRenderer hudRenderer,
+                            BufferedImage[] crackStages,
+                            ItemTextureCache itemTextureCache) {
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, hurtParticleSynthesizer, hudRenderer, crackStages, itemTextureCache, 0, 0, true);
     }
 
     /**
@@ -138,13 +172,41 @@ public class IsometricRenderer {
                             HurtParticleSynthesizer hurtParticleSynthesizer,
                             HudRenderer hudRenderer,
                             BufferedImage[] crackStages,
-                            ItemTextureCache itemTextureCache) {
+                            ItemTextureCache itemTextureCache,
+                            int groundFullRelY,
+                            int viewCenterOffsetY) {
+        this(volumeSize, tileWidth, tileHeight, cutOffset, blockColorMap, blockRegistry, blockTextureRegistry, entitySpriteRegistry, skinCache, hurtParticleSynthesizer, hudRenderer, crackStages, itemTextureCache, groundFullRelY, viewCenterOffsetY, true);
+    }
+
+    /** Full constructor including block face culling option. */
+    public IsometricRenderer(int volumeSize, int tileWidth, int tileHeight, int cutOffset,
+                            BlockColorMap blockColorMap, BlockRegistry blockRegistry,
+                            BlockTextureRegistry blockTextureRegistry,
+                            EntitySpriteRegistry entitySpriteRegistry, SkinCache skinCache,
+                            HurtParticleSynthesizer hurtParticleSynthesizer,
+                            HudRenderer hudRenderer,
+                            BufferedImage[] crackStages,
+                            ItemTextureCache itemTextureCache,
+                            int groundFullRelY,
+                            int viewCenterOffsetY,
+                            boolean blockFaceCulling) {
         this.volumeSize = volumeSize;
         this.tileWidth = tileWidth;
         this.tileHeight = tileHeight;
         this.cutOffset = cutOffset;
+        this.groundFullRelY = groundFullRelY;
+        this.viewCenterOffsetY = viewCenterOffsetY;
+        this.blockFaceCulling = blockFaceCulling;
         this.blockColorMap = blockColorMap;
         this.blockRegistry = blockRegistry;
+        int ordCount = blockRegistry.getOrdinalCount();
+        this.occludesByOrdinal = new boolean[ordCount];
+        for (int i = 0; i < ordCount; i++) {
+            if (i == AIR_ORDINAL) continue;
+            Material m = blockRegistry.getMaterial((short) i);
+            boolean transparent = m != null && TRANSPARENT_MATERIALS.contains(m.name());
+            occludesByOrdinal[i] = !transparent;
+        }
         this.blockTextureRegistry = blockTextureRegistry;
         this.entitySpriteRegistry = entitySpriteRegistry;
         this.skinCache = skinCache;
@@ -164,6 +226,54 @@ public class IsometricRenderer {
         if (hurtParticleSynthesizer != null) {
             hurtParticleSynthesizer.analyze(frames);
         }
+    }
+
+    /**
+     * Prefetches assets (entity sprites, block textures, item textures) for all frames in parallel.
+     * Call before the render loop to avoid sequential fetches during render.
+     */
+    public void prefetchAssetsForFrames(List<WorldSnapshot> frames, McAssetFetcher fetcher) {
+        if (frames == null || frames.isEmpty() || fetcher == null) return;
+
+        Set<EntityType> entityTypes = new HashSet<>();
+        Set<String> blockTextureNames = new HashSet<>();
+        Set<String> itemMaterialNames = new HashSet<>();
+
+        for (WorldSnapshot snap : frames) {
+            for (EntitySnapshot e : snap.entities) {
+                if (e.type != EntityType.PLAYER) {
+                    entityTypes.add(e.type);
+                }
+                if (e.droppedItemMaterial != null) {
+                    String mat = ItemSerializer.getMaterialName(e.droppedItemMaterial);
+                    if (mat != null && !mat.isEmpty()) itemMaterialNames.add(mat);
+                }
+            }
+            if (blockTextureRegistry != null && snap.blocks != null) {
+                blockTextureRegistry.collectTextureNamesForBlocks(snap.blocks, blockTextureNames);
+            }
+            addItemMaterial(itemMaterialNames, snap.mainHandItem);
+            addItemMaterial(itemMaterialNames, snap.offHandItem);
+            addItemMaterial(itemMaterialNames, snap.helmetItem);
+            addItemMaterial(itemMaterialNames, snap.chestplateItem);
+            addItemMaterial(itemMaterialNames, snap.leggingsItem);
+            addItemMaterial(itemMaterialNames, snap.bootsItem);
+            if (snap.hotbarItems != null) {
+                for (String h : snap.hotbarItems) addItemMaterial(itemMaterialNames, h);
+            }
+        }
+
+        fetcher.prefetchInParallel(entityTypes, blockTextureNames, itemMaterialNames);
+
+        if (blockTextureRegistry != null) {
+            blockTextureRegistry.prefetchFacesForFrames(frames);
+        }
+    }
+
+    private static void addItemMaterial(Set<String> out, String compact) {
+        if (compact == null || compact.isEmpty()) return;
+        String mat = ItemSerializer.getMaterialName(compact);
+        if (mat != null && !mat.isEmpty()) out.add(mat);
     }
 
     /** Carries trigger frame index and death/last-alive state so we draw border and overlay on the right frame. */
@@ -191,35 +301,96 @@ public class IsometricRenderer {
     }
 
     /**
-     * Collects visible blocks (non-air, not culled by cut plane), sorts by relX+relZ+relY so
-     * back-to-front draw order is correct for the isometric view.
+     * Builds the block draw list by iterating all non-air blocks and applying the cut plane.
+     * No occlusion culling — renders all blocks for a complete look (matches v0.1.0 behavior).
+     * Sorted back-to-front for correct painter's order.
      */
     public List<BlockDrawEntry> buildBlockDrawList(WorldSnapshot snapshot) {
         short[] blocks = snapshot.blocks;
         int vol = snapshot.volumeSize;
         int half = vol / 2;
         List<BlockDrawEntry> list = new ArrayList<>();
+
         for (int x = 0; x < vol; x++) {
             for (int y = 0; y < vol; y++) {
                 for (int z = 0; z < vol; z++) {
                     int idx = x * vol * vol + y * vol + z;
                     short ordinal = blocks[idx];
-                    if (ordinal == AIR_ORDINAL) {
-                        continue;
-                    }
+                    if (ordinal == AIR_ORDINAL) continue;
                     int relX = x - half;
                     int relY = y - half;
                     int relZ = z - half;
-                    if (CutPlanePolicy.isCulled(relX, relZ, cutOffset)) {
-                        continue;
-                    }
+                    if (CutPlanePolicy.isCulled(relX, relY, relZ, cutOffset, groundFullRelY)) continue;
                     int sortKey = relX + relZ + relY;
                     list.add(new BlockDrawEntry(sortKey, relX, relY, relZ, ordinal));
                 }
             }
         }
-        list.sort((a, b) -> Integer.compare(a.sortKey, b.sortKey));
+
+        list.sort((a, b) -> Integer.compare(b.sortKey, a.sortKey));
         return list;
+    }
+
+    /**
+     * Logs diagnostic info about what will be rendered: block material counts, draw-list stats,
+     * entity list (type, position, player/dead), and whether blocks use textures or solid colors.
+     * Call before rendering to troubleshoot visibility/color issues (sand, water, trees, mobs).
+     *
+     * @param jobIdPrefix optional (e.g. UUID) to prefix log lines; null to omit
+     */
+    public void logRenderDiagnostics(WorldSnapshot snapshot, int frameIndex, String jobIdPrefix, Logger logger) {
+        if (logger == null) return;
+        String prefix = (jobIdPrefix != null ? "[" + jobIdPrefix + "] " : "");
+
+        List<BlockDrawEntry> drawList = buildBlockDrawList(snapshot);
+        int texturedCount = 0;
+        if (blockTextureRegistry != null) {
+            for (BlockDrawEntry e : drawList) {
+                if (blockTextureRegistry.getFaces(e.materialOrdinal).isPresent()) {
+                    texturedCount++;
+                }
+            }
+        }
+        String entitySummary = snapshot.entities.stream()
+                .map(e -> e.type + (e.isPlayer ? "(player)" : ""))
+                .collect(Collectors.joining(", "));
+        logger.info("{}[frame {}] Rendering: {} blocks ({} textured, {} solid), {} entities [{}]",
+                prefix, frameIndex, drawList.size(), texturedCount, drawList.size() - texturedCount,
+                snapshot.entities.size(), entitySummary.isEmpty() ? "none" : entitySummary);
+
+        if (!logger.isDebugEnabled()) return;
+
+        int vol = snapshot.volumeSize;
+        short[] blocks = snapshot.blocks;
+        Map<String, Integer> materialCounts = new TreeMap<>();
+
+        for (int i = 0; i < blocks.length; i++) {
+            short ord = blocks[i];
+            if (ord == AIR_ORDINAL) continue;
+            Material m = blockRegistry.getMaterial(ord);
+            String name = m != null ? m.name() : "ordinal_" + ord;
+            materialCounts.merge(name, 1, Integer::sum);
+        }
+
+        List<Map.Entry<String, Integer>> topBlocks = materialCounts.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .limit(25)
+                .collect(Collectors.toList());
+
+        logger.debug("{}[frame {}] Block materials (top 25): {}", prefix, frameIndex,
+                topBlocks.stream().map(e -> e.getKey() + "=" + e.getValue()).collect(Collectors.joining(", ")));
+
+        logger.debug("{}[frame {}] Draw list: {} blocks visible (cut plane), {} textured, {} solid color",
+                prefix, frameIndex, drawList.size(), texturedCount, drawList.size() - texturedCount);
+
+        for (EntitySnapshot e : snapshot.entities) {
+            String role = e.isPlayer ? "player" : (e.isDead ? "dead" : "mob");
+            logger.debug("{}[frame {}] Entity {} at ({}, {}, {}) {} invisible={}",
+                    prefix, frameIndex, e.type, e.relX, e.relY, e.relZ, role, e.invisible);
+        }
+        if (snapshot.entities.isEmpty()) {
+            logger.debug("{}[frame {}] No entities in snapshot", prefix, frameIndex);
+        }
     }
 
     /** Screen position of the top-center of a block at the given relative coords. */
@@ -230,69 +401,87 @@ public class IsometricRenderer {
     /** Same as project(int) but for entity positions in double. */
     public Point project(double relX, double relY, double relZ) {
         int sx = imageWidth / 2 + (int) Math.round((relX - relZ) * (tileWidth / 2.0));
-        int sy = imageHeight / 2 + (int) Math.round((relX + relZ) * (tileHeight / 2.0) - relY * tileHeight);
+        int sy = imageHeight / 2 + (int) Math.round((relX + relZ) * (tileHeight / 2.0) - relY * tileHeight - viewCenterOffsetY * tileHeight);
         return new Point(sx, sy);
     }
 
     /**
-     * Draws top/left/right faces for one block. When BlockTextureRegistry has textures for this
-     * material, draws them; otherwise uses BlockColorMap solid colors. Applies transparency for
-     * glass-like blocks, per-frame hue shift for liquids (shimmer), and emissive brightness from
-     * BlockColorMap when using colors.
+     * Draws visible block faces. When BlockTextureRegistry has textures for this material,
+     * draws them; otherwise uses BlockColorMap solid colors. Only faces not occluded by
+     * adjacent blocks are drawn.
      */
-    public void drawBlock(Graphics2D g, int screenX, int screenY, short materialOrdinal, int frameIndex) {
+    public void drawBlock(Graphics2D g, int screenX, int screenY, short materialOrdinal, int frameIndex,
+                          FaceVisibility vis) {
         Optional<BlockFaceTextures> texOpt = blockTextureRegistry != null
                 ? blockTextureRegistry.getFaces(materialOrdinal)
                 : Optional.empty();
 
         if (texOpt.isPresent()) {
-            drawBlockTextured(g, screenX, screenY, materialOrdinal, frameIndex, texOpt.get());
+            drawBlockTextured(g, screenX, screenY, materialOrdinal, frameIndex, texOpt.get(), vis);
         } else {
-            drawBlockColored(g, screenX, screenY, materialOrdinal, frameIndex);
+            drawBlockColored(g, screenX, screenY, materialOrdinal, frameIndex, vis);
         }
     }
 
     private void drawBlockTextured(Graphics2D g, int screenX, int screenY, short materialOrdinal,
-                                   int frameIndex, BlockFaceTextures tex) {
+                                   int frameIndex, BlockFaceTextures tex, FaceVisibility vis) {
         boolean transparent = isTransparent(materialOrdinal);
         int halfW = tileWidth / 2;
         int halfH = tileHeight / 2;
         int th = tileHeight;
 
+        BufferedImage topTex = scaledTexture(tex.top(), tileWidth, th);
+        BufferedImage sideTex = scaledTexture(tex.side(), tileWidth, th);
+
+        // Opaque blocks: full alpha on all faces. Shading (darker sides) is achieved by BlockColorMap
+        // via RGB darkening for solid-color path; textures stay opaque. Using alpha for shading caused
+        // semi-transparency and x-ray/ghosting of interior blocks.
         float alphaTop = transparent ? 0.5f : 1f;
-        float alphaLeft = transparent ? 0.375f : 0.75f;
-        float alphaRight = transparent ? 0.275f : 0.55f;
+        float alphaLeft = transparent ? 0.375f : 1f;
+        float alphaRight = transparent ? 0.275f : 1f;
 
-        // Top face
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alphaTop));
-        int[] topX = { screenX, screenX + halfW, screenX, screenX - halfW };
-        int[] topY = { screenY, screenY + halfH, screenY + th, screenY + halfH };
-        drawTexturedPolygon(g, topX, topY, tex.top());
-
-        // Left face (side texture, slightly darker)
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alphaLeft));
-        int[] leftX = { screenX - halfW, screenX, screenX, screenX - halfW };
-        int[] leftY = { screenY + halfH, screenY + th, screenY + th + th, screenY + halfH + th };
-        drawTexturedPolygon(g, leftX, leftY, tex.side());
-
-        // Right face (side texture, darkest)
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alphaRight));
-        int[] rightX = { screenX, screenX + halfW, screenX + halfW, screenX };
-        int[] rightY = { screenY + th, screenY + halfH, screenY + halfH + th, screenY + th + th };
-        drawTexturedPolygon(g, rightX, rightY, tex.side());
-
-        g.setComposite(AlphaComposite.SrcOver);
+        if (vis.top()) {
+            AffineTransform at = new AffineTransform(
+                    (double) halfW / tileWidth, (double) halfH / tileWidth,
+                    (double) -halfW / th, (double) halfH / th,
+                    screenX, screenY);
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alphaTop));
+            g.drawImage(topTex, at, null);
+        }
+        if (vis.left()) {
+            AffineTransform at = new AffineTransform(
+                    (double) halfW / tileWidth, (double) halfH / tileWidth,
+                    0, 1,
+                    screenX - halfW, screenY + halfH);
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alphaLeft));
+            g.drawImage(sideTex, at, null);
+        }
+        if (vis.right()) {
+            AffineTransform at = new AffineTransform(
+                    (double) halfW / tileWidth, (double) -halfH / tileWidth,
+                    0, 1,
+                    screenX, screenY + th);
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alphaRight));
+            g.drawImage(sideTex, at, null);
+        }
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
     }
 
-    private void drawTexturedPolygon(Graphics2D g, int[] xPoints, int[] yPoints, BufferedImage texture) {
-        Polygon poly = new Polygon(xPoints, yPoints, 4);
-        Rectangle bounds = poly.getBounds();
-        if (bounds.width <= 0 || bounds.height <= 0) return;
-        Shape prevClip = g.getClip();
-        g.setClip(poly);
-        g.drawImage(texture, bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height,
-                0, 0, texture.getWidth(), texture.getHeight(), null);
-        g.setClip(prevClip);
+    private BufferedImage scaledTexture(BufferedImage src, int w, int h) {
+        BufferedImage cached = scaledTextureCache.get(src);
+        if (cached != null && cached.getWidth() == w && cached.getHeight() == h) {
+            return cached;
+        }
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D sg = out.createGraphics();
+        sg.setComposite(AlphaComposite.SrcOver);
+        sg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        sg.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+        sg.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+        sg.drawImage(src, 0, 0, w, h, null);
+        sg.dispose();
+        scaledTextureCache.put(src, out);
+        return out;
     }
 
     /** Draws crack overlay on all three block faces. Opacity 30% + (stage/9)*40% (30–70%). */
@@ -305,28 +494,42 @@ public class IsometricRenderer {
         int halfW = tileWidth / 2;
         int halfH = tileHeight / 2;
         int th = tileHeight;
-        BufferedImage crack = crackStages[stage];
-        int[] topX = { screenX, screenX + halfW, screenX, screenX - halfW };
-        int[] topY = { screenY, screenY + halfH, screenY + th, screenY + halfH };
-        drawTexturedPolygon(g, topX, topY, crack);
-        int[] leftX = { screenX - halfW, screenX, screenX, screenX - halfW };
-        int[] leftY = { screenY + halfH, screenY + th, screenY + th + th, screenY + halfH + th };
-        drawTexturedPolygon(g, leftX, leftY, crack);
-        int[] rightX = { screenX, screenX + halfW, screenX + halfW, screenX };
-        int[] rightY = { screenY + th, screenY + halfH, screenY + halfH + th, screenY + th + th };
-        drawTexturedPolygon(g, rightX, rightY, crack);
-        g.setComposite(AlphaComposite.SrcOver);
+        BufferedImage crack = scaledTexture(crackStages[stage], tileWidth, th);
+        AffineTransform topAt = new AffineTransform(
+                (double) halfW / tileWidth, (double) halfH / tileWidth,
+                (double) -halfW / th, (double) halfH / th,
+                screenX, screenY);
+        g.drawImage(crack, topAt, null);
+        AffineTransform leftAt = new AffineTransform(
+                (double) halfW / tileWidth, (double) halfH / tileWidth,
+                0, 1,
+                screenX - halfW, screenY + halfH);
+        g.drawImage(crack, leftAt, null);
+        AffineTransform rightAt = new AffineTransform(
+                (double) halfW / tileWidth, (double) -halfH / tileWidth,
+                0, 1,
+                screenX, screenY + th);
+        g.drawImage(crack, rightAt, null);
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
     }
 
-    private void drawBlockColored(Graphics2D g, int screenX, int screenY, short materialOrdinal, int frameIndex) {
+    private static final Color WATER_BLUE = new Color(0x3F76E4);
+
+    private void drawBlockColored(Graphics2D g, int screenX, int screenY, short materialOrdinal, int frameIndex,
+                                  FaceVisibility vis) {
         BlockFaceColors faces = blockColorMap.getFaces(materialOrdinal);
         boolean transparent = isTransparent(materialOrdinal);
         boolean liquid = isLiquid(materialOrdinal);
+        Material mat = blockRegistry.getMaterial(materialOrdinal);
 
         Color top = faces.top();
         Color left = faces.left();
         Color right = faces.right();
-        if (liquid) {
+        if (mat != null && mat == Material.WATER) {
+            top = WATER_BLUE;
+            left = new Color((int) (WATER_BLUE.getRed() * 0.75), (int) (WATER_BLUE.getGreen() * 0.75), (int) (WATER_BLUE.getBlue() * 0.75));
+            right = new Color((int) (WATER_BLUE.getRed() * 0.55), (int) (WATER_BLUE.getGreen() * 0.55), (int) (WATER_BLUE.getBlue() * 0.55));
+        } else if (liquid) {
             int shiftDegrees = (frameIndex % 10) * 2;
             top = shiftHue(top, shiftDegrees);
             left = shiftHue(left, shiftDegrees);
@@ -342,20 +545,24 @@ public class IsometricRenderer {
         int halfH = tileHeight / 2;
         int th = tileHeight;
 
-        int[] topX = { screenX, screenX + halfW, screenX, screenX - halfW };
-        int[] topY = { screenY, screenY + halfH, screenY + th, screenY + halfH };
-        g.setColor(top);
-        g.fillPolygon(topX, topY, 4);
-
-        int[] leftX = { screenX - halfW, screenX, screenX, screenX - halfW };
-        int[] leftY = { screenY + halfH, screenY + th, screenY + th + th, screenY + halfH + th };
-        g.setColor(left);
-        g.fillPolygon(leftX, leftY, 4);
-
-        int[] rightX = { screenX, screenX + halfW, screenX + halfW, screenX };
-        int[] rightY = { screenY + th, screenY + halfH, screenY + halfH + th, screenY + th + th };
-        g.setColor(right);
-        g.fillPolygon(rightX, rightY, 4);
+        if (vis.top()) {
+            int[] topX = { screenX, screenX + halfW, screenX, screenX - halfW };
+            int[] topY = { screenY, screenY + halfH, screenY + th, screenY + halfH };
+            g.setColor(top);
+            g.fillPolygon(topX, topY, 4);
+        }
+        if (vis.left()) {
+            int[] leftX = { screenX - halfW, screenX, screenX, screenX - halfW };
+            int[] leftY = { screenY + halfH, screenY + th, screenY + th + th, screenY + halfH + th };
+            g.setColor(left);
+            g.fillPolygon(leftX, leftY, 4);
+        }
+        if (vis.right()) {
+            int[] rightX = { screenX, screenX + halfW, screenX + halfW, screenX };
+            int[] rightY = { screenY + th, screenY + halfH, screenY + halfH + th, screenY + th + th };
+            g.setColor(right);
+            g.fillPolygon(rightX, rightY, 4);
+        }
     }
 
     /** Renders one frame without entities or overlays; context null means block (+ emissive) only. */
@@ -371,6 +578,10 @@ public class IsometricRenderer {
         BufferedImage image = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
         try {
+            // Ensure full opacity for block/entity drawing; avoid residual composite from prior state
+            g.setComposite(AlphaComposite.SrcOver);
+            g.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
             // Block pass
             List<BlockDrawEntry> drawList = buildBlockDrawList(snapshot);
             List<EmissiveGlow> glowPositions = new ArrayList<>();
@@ -380,7 +591,9 @@ public class IsometricRenderer {
 
             for (BlockDrawEntry e : drawList) {
                 Point p = project(e.relX, e.relY, e.relZ);
-                drawBlock(g, p.x, p.y, e.materialOrdinal, frameIndex);
+                // Always draw top and side faces so the GIF looks complete.
+                FaceVisibility vis = new FaceVisibility(true, true, true);
+                drawBlock(g, p.x, p.y, e.materialOrdinal, frameIndex, vis);
                 if (blockColorMap.isEmissive(e.materialOrdinal)) {
                     BlockFaceColors faces = blockColorMap.getFaces(e.materialOrdinal);
                     Color glowColor = faces.top();
@@ -479,7 +692,12 @@ public class IsometricRenderer {
         entities.sort(Comparator.comparingDouble(e -> e.relX + e.relZ + e.relY));
 
         for (EntitySnapshot e : entities) {
-            Point p = project(e.relX, e.relY, e.relZ);
+            // Ground-standing entities (player, mobs): project feet onto the top of the block below.
+            // Floating entities (fishing hook, dropped item, XP orb): use actual position.
+            boolean groundStanding = e.isPlayer || e.type == EntityType.PLAYER
+                    || (e.type != EntityType.FISHING_HOOK && e.type != EntityType.DROPPED_ITEM && e.type != EntityType.EXPERIENCE_ORB);
+            double anchorRelY = groundStanding ? e.relY - 1 : e.relY;
+            Point p = project(e.relX, anchorRelY, e.relZ);
             int screenX = p.x;
             int screenY = p.y;
 
@@ -504,9 +722,12 @@ public class IsometricRenderer {
             if (spriteH < 1) spriteH = 1;
 
             BufferedImage sprite = null;
-            if (e.isPlayer) {
+            if (e.isPlayer || e.type == EntityType.PLAYER) {
                 Optional<BufferedImage> body = skinCache.getBody(e.uuid);
                 sprite = body.orElseGet(skinCache::getPlaceholderBody);
+                if (sprite == null) {
+                    sprite = skinCache.getPlaceholderBody();
+                }
             } else {
                 Optional<BufferedImage> reg = entitySpriteRegistry.getSprite(e.type);
                 sprite = reg.orElse(null);
@@ -750,12 +971,38 @@ public class IsometricRenderer {
     }
 
     private BufferedImage createColoredMarker(int w, int h, Color color) {
+        Color base = color != null ? color : MARKER_FALLBACK_COLOR;
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
-        g.setColor(color != null ? color : MARKER_FALLBACK_COLOR);
-        g.fillRect(0, 0, w, h);
-        g.dispose();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        try {
+            g.setColor(base);
+            g.fillRect(0, 0, w, h);
+            int edge = Math.max(1, Math.min(w, h) / 8);
+            g.setColor(darker(base, 0.6f));
+            g.fillRect(0, 0, w, edge);
+            g.fillRect(0, 0, edge, h);
+            g.setColor(brighter(base, 1.15f));
+            g.fillRect(0, h - edge, w, edge);
+            g.fillRect(w - edge, 0, edge, h);
+        } finally {
+            g.dispose();
+        }
         return img;
+    }
+
+    private static Color darker(Color c, float factor) {
+        return new Color(
+                Math.max(0, (int) (c.getRed() * factor)),
+                Math.max(0, (int) (c.getGreen() * factor)),
+                Math.max(0, (int) (c.getBlue() * factor)));
+    }
+
+    private static Color brighter(Color c, float factor) {
+        return new Color(
+                Math.min(255, (int) (c.getRed() * factor)),
+                Math.min(255, (int) (c.getGreen() * factor)),
+                Math.min(255, (int) (c.getBlue() * factor)));
     }
 
     private static BufferedImage scaleSprite(BufferedImage src, int w, int h) {
@@ -899,6 +1146,30 @@ public class IsometricRenderer {
         if (h < 0) h += 360f;
         int rgb = Color.HSBtoRGB(h / 360f, hsb[1], hsb[2]);
         return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+    }
+
+    /** Which faces of a block are visible (not occluded by adjacent blocks). */
+    public record FaceVisibility(boolean top, boolean left, boolean right) {}
+
+    /**
+     * Determines which block faces are visible: top (+Y), left (-X), right (-Z).
+     * A face is visible when the neighbor in that direction is air, transparent, or out of volume.
+     * Transparent blocks (glass, water, ice, etc.) do not occlude — faces bordering them are drawn.
+     */
+    private FaceVisibility computeFaceVisibility(int relX, int relY, int relZ,
+                                                 short[] blocks, int vol, int half) {
+        int x = relX + half;
+        int y = relY + half;
+        int z = relZ + half;
+        boolean top = y + 1 >= vol || !occludes(blocks[x * vol * vol + (y + 1) * vol + z]);
+        boolean left = x - 1 < 0 || !occludes(blocks[(x - 1) * vol * vol + y * vol + z]);
+        boolean right = z - 1 < 0 || !occludes(blocks[x * vol * vol + y * vol + (z - 1)]);
+        return new FaceVisibility(top, left, right);
+    }
+
+    /** True if this block occludes adjacent faces (solid, not air or transparent). */
+    private boolean occludes(short ordinal) {
+        return ordinal > 0 && ordinal < occludesByOrdinal.length && occludesByOrdinal[ordinal];
     }
 
     /** Single block entry for the sorted draw list; sortKey = relX+relZ+relY for painter's order. */

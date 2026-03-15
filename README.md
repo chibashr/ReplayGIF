@@ -29,7 +29,7 @@ Textures load in this order: `resource_pack_path` → `client_jar_path` → Moja
 
 - **resource_pack_path**: Path relative to plugin data folder (default `packs` = `plugins/ReplayGif/packs/`). Drop .zip resource packs in that folder; the first one found is used. Or set a specific file (e.g. `packs/Faithful.zip`). Leave empty to skip.
 - **client_jar_path**: Path to a Minecraft 1.21+ client JAR for entity and item textures. Leave empty to try Mojang cache or bundled.
-- **download_assets_version**: When both paths above are empty, item/block textures are downloaded from Mojang on first load and cached to `plugins/ReplayGif/texture_cache/`. Set version (e.g. `1.21`). Requires outbound HTTPS.
+- **download_assets_version**: Version for mcasset.cloud CDN (e.g. `1.21`, `latest`, `snapshot`). Used when no client jar or resource pack; entities, items, and blocks are fetched on-demand from mcasset.cloud. Requires outbound HTTPS.
 
 The HUD shows full 9-slot hotbar and 4 armor slots with actual item icons when textures are available.
 
@@ -156,7 +156,7 @@ These are common misconfigurations and how they appear in the console.
    Cause: The requested time window (trigger time ± pre/post seconds) contained no frames in the player’s buffer. Typical causes: buffer_seconds or FPS too low so the window is not covered, trigger fired before enough time had passed after the player joined, or clock/trigger timestamp mismatch. Increase `buffer_seconds` or ensure the player has been online and in range of the scheduler for at least the pre window before the trigger.
 
 6. **Entities as gray or colored boxes; player as oversized face**  
-   Cause: Missing textures. Configure `resource_pack_path` or `client_jar_path` in `renderer.yml`, or run `extractItemTextures` and `extractEntityTextures` to bundle them. When both paths are empty and no bundled textures exist, Mojang download runs on first load (requires HTTPS). For player skins, ensure `skin_rendering_enabled: true` and outbound HTTPS works.
+   Cause: Missing textures. By default, textures are fetched from mcasset.cloud (requires HTTPS). Configure `resource_pack_path` or `client_jar_path` in `renderer.yml` for offline use, or run `extractItemTextures` and `extractEntityTextures` to bundle them. For player skins, ensure `skin_rendering_enabled: true` and outbound HTTPS works.
 
 If the console shows `webhook_server.enabled is true but webhook_server.secret is still 'changeme'`, change the secret in production to avoid unauthorized use.
 

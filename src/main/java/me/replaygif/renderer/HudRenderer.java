@@ -116,14 +116,18 @@ public final class HudRenderer {
         if (armorPoints > 0 && !dead) {
             drawArmorBar(g2d, armorPoints, imageWidth, heartY - tileHeight - 2);
         }
-        drawHearts(g2d, snapshot, heartY, spriteSize, dead);
-        if (!dead) {
+        if (snapshot.playerHealth > 0f) {
+            drawHearts(g2d, snapshot, heartY, spriteSize, false);
+        }
+        if (!dead && snapshot.playerFood > 0) {
             drawFoodBar(g2d, snapshot.playerFood, imageWidth, heartY, spriteSize);
         }
         if (dead) {
             drawDeathIndicator(g2d, imageWidth, imageHeight);
         } else {
-            drawArmorSlots(g2d, snapshot, imageWidth, imageHeight);
+            if (hasAnyArmor(snapshot)) {
+                drawArmorSlots(g2d, snapshot, imageWidth, imageHeight);
+            }
             drawHotbar(g2d, snapshot, imageWidth, imageHeight, frameIndex);
         }
         int barHeight = Math.max(6, tileHeight / 2);
@@ -189,6 +193,11 @@ public final class HudRenderer {
         if (item == null) return 0;
         String material = ItemSerializer.getMaterialName(item);
         return material != null ? values.getOrDefault(material, 0) : 0;
+    }
+
+    private static boolean hasAnyArmor(WorldSnapshot snapshot) {
+        return snapshot.helmetItem != null || snapshot.chestplateItem != null
+                || snapshot.leggingsItem != null || snapshot.bootsItem != null;
     }
 
     private void drawArmorBar(Graphics2D g, int armorPoints, int imageWidth, int y) {
@@ -313,10 +322,8 @@ public final class HudRenderer {
                 Optional<BufferedImage> tex = material != null ? itemTextureCache.getTexture(material) : Optional.empty();
                 if (tex.isPresent()) {
                     g.drawImage(tex.get(), sx, y, slotSize, slotSize, null);
-                } else {
-                    g.setColor(new Color(0x888888));
-                    g.fillRect(sx, y, slotSize, slotSize);
                 }
+                /* No placeholder when texture missing — sprite disappears */
             }
         }
     }
@@ -339,10 +346,8 @@ public final class HudRenderer {
                 String item = hotbar.get(i);
                 if (item != null) {
                     drawItemInSlot(g, item, sx, y, tileWidth, tileWidth, frameIndex);
-                } else {
-                    g.setColor(new Color(0x888888));
-                    g.fillRect(sx, y, tileWidth, tileWidth);
                 }
+                /* Empty slot: no placeholder — sprite disappears */
             }
         } else {
             g.setColor(HOTBAR_BORDER);
@@ -351,9 +356,6 @@ public final class HudRenderer {
             String mainItem = snapshot.mainHandItem;
             if (mainItem != null) {
                 drawItemInSlot(g, mainItem, mainX, y, tileWidth, tileWidth, frameIndex);
-            } else {
-                g.setColor(new Color(0x888888));
-                g.fillRect(mainX, y, tileWidth, tileWidth);
             }
         }
 
@@ -372,13 +374,11 @@ public final class HudRenderer {
         Optional<BufferedImage> tex = material != null ? itemTextureCache.getTexture(material) : Optional.empty();
         if (tex.isPresent()) {
             g.drawImage(tex.get(), x, y, w, h, null);
-        } else {
-            g.setColor(new Color(0x888888));
-            g.fillRect(x, y, w, h);
+            if (ItemSerializer.isEnchanted(item)) {
+                drawEnchantmentGlint(g, x, y, w, h, frameIndex);
+            }
         }
-        if (ItemSerializer.isEnchanted(item)) {
-            drawEnchantmentGlint(g, x, y, w, h, frameIndex);
-        }
+        /* No placeholder when texture missing — sprite disappears */
     }
 
     /**

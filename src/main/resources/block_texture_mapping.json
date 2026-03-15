@@ -55,5 +55,12 @@
   "DRIED_KELP_BLOCK": { "top": "dried_kelp_top", "side": "dried_kelp_side", "bottom": "dried_kelp_top" },
   "SNOW": { "top": "snow", "side": "snow", "bottom": "snow" },
   "MUD": { "top": "mud", "side": "mud", "bottom": "mud" },
-  "MUDDY_MANGROVE_ROOTS": { "top": "muddy_mangrove_roots_top", "side": "muddy_mangrove_roots_side", "bottom": "muddy_mangrove_roots_top" }
+  "MUDDY_MANGROVE_ROOTS": { "top": "muddy_mangrove_roots_top", "side": "muddy_mangrove_roots_side", "bottom": "muddy_mangrove_roots_top" },
+  "WATER": { "top": "water_still", "side": "water_still", "bottom": "water_still" },
+  "OAK_LEAVES": { "top": "oak_leaves", "side": "oak_leaves", "bottom": "oak_leaves" },
+  "SPRUCE_LEAVES": { "top": "spruce_leaves", "side": "spruce_leaves", "bottom": "spruce_leaves" },
+  "BIRCH_LEAVES": { "top": "birch_leaves", "side": "birch_leaves", "bottom": "birch_leaves" },
+  "JUNGLE_LEAVES": { "top": "jungle_leaves", "side": "jungle_leaves", "bottom": "jungle_leaves" },
+  "ACACIA_LEAVES": { "top": "acacia_leaves", "side": "acacia_leaves", "bottom": "acacia_leaves" },
+  "DARK_OAK_LEAVES": { "top": "dark_oak_leaves", "side": "dark_oak_leaves", "bottom": "dark_oak_leaves" }
 }

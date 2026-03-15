@@ -1,0 +1,44 @@
+ReplayGIF Codemap Update Report
+Generated: 2026-03-09
+Files scanned: 127 (src/main, src/test, src/main/resources)
+
+═══════════════════════════════════════════════════════════════
+
+DIFF DETECTION
+Previous codemaps: 125 files
+Action: Metadata refresh (Files scanned: 127). Architecture unchanged.
+
+═══════════════════════════════════════════════════════════════
+
+FILES UPDATED
+
+docs/CODEMAPS/architecture.md   — metadata (127 files)
+docs/CODEMAPS/backend.md        — metadata (127 files)
+docs/CODEMAPS/data.md           — metadata (127 files)
+docs/CODEMAPS/dependencies.md   — metadata (127 files)
+
+═══════════════════════════════════════════════════════════════
+
+DOCUMENTATION UPDATES
+
+docs/CONTRIBUTING.md — Added build, clean to commands table (from Gradle Java plugin)
+
+═══════════════════════════════════════════════════════════════
+
+ARCHITECTURE SUMMARY
+
+Project: Minecraft Paper plugin (ReplayGIF)
+- Entry: ReplayGifPlugin, plugin.yml main class
+- Trigger sources: DeathListener, DynamicListenerRegistry, ApiTriggerListener, WebhookInboundServer
+- Pipeline: SnapshotBuffer → IsometricRenderer → GifEncoder → OutputTarget
+- Config: config.yml, renderer.yml, outputs.yml, triggers.yml
+
+═══════════════════════════════════════════════════════════════
+
+NEW DEPENDENCIES
+None beyond existing (Paper API, Gson, JUnit, Mockito).
+
+═══════════════════════════════════════════════════════════════
+
+STALENESS
+No docs flagged (90+ days). All content current.

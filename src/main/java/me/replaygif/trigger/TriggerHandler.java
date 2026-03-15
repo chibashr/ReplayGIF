@@ -7,6 +7,7 @@ import me.replaygif.core.WorldSnapshot;
 import me.replaygif.encoder.GifEncoder;
 import me.replaygif.output.OutputTarget;
 import me.replaygif.renderer.IsometricRenderer;
+import me.replaygif.renderer.McAssetFetcher;
 import org.slf4j.Logger;
 
 import java.awt.image.BufferedImage;
@@ -33,6 +34,7 @@ public final class TriggerHandler {
     private final GifEncoder gifEncoder;
     private final OutputProfileRegistry outputProfileRegistry;
     private final ConfigManager configManager;
+    private final McAssetFetcher mcAssetFetcher;
     private final Logger logger;
     private final ExecutorService renderPool;
     private final Map<UUID, RenderJob> activeJobs = new ConcurrentHashMap<>();
@@ -43,6 +45,7 @@ public final class TriggerHandler {
      * @param gifEncoder             turns image list into GIF bytes
      * @param outputProfileRegistry  profile name → list of OutputTargets for dispatch
      * @param configManager          fps for frame delay and async thread count
+     * @param mcAssetFetcher         optional; used to log asset fetch status when render completes
      * @param logger                 for job lifecycle and failure messages
      */
     public TriggerHandler(
@@ -51,12 +54,14 @@ public final class TriggerHandler {
             GifEncoder gifEncoder,
             OutputProfileRegistry outputProfileRegistry,
             ConfigManager configManager,
+            McAssetFetcher mcAssetFetcher,
             Logger logger) {
         this.buffers = buffers;
         this.renderer = renderer;
         this.gifEncoder = gifEncoder;
         this.outputProfileRegistry = outputProfileRegistry;
         this.configManager = configManager;
+        this.mcAssetFetcher = mcAssetFetcher;
         this.logger = logger;
         int threads = configManager.getAsyncThreads();
         this.renderPool = Executors.newFixedThreadPool(threads, new ThreadFactory() {
@@ -107,6 +112,7 @@ public final class TriggerHandler {
             }
 
             job.status = RenderJob.Status.RENDERING;
+            int assetCountBefore = mcAssetFetcher != null ? mcAssetFetcher.getDownloadCount() : 0;
             logger.info("[{}] status=RENDERING", jobId);
 
             // b. Slice window: from trigger - preSeconds to trigger + postSeconds
@@ -119,6 +125,12 @@ public final class TriggerHandler {
                 job.status = RenderJob.Status.FAILED;
                 job.failureReason = "empty slice";
                 return;
+            }
+
+            // Prefetch assets in parallel before render (entities, blocks, items)
+            if (mcAssetFetcher != null) {
+                renderer.prefetchAssetsForFrames(frames, mcAssetFetcher);
+                logger.info("[{}] Prefetch done, starting render", jobId);
             }
 
             // e. Find trigger frame index: first frame at or after trigger timestamp
@@ -154,10 +166,24 @@ public final class TriggerHandler {
             // e2. Stage 0.5: pre-render hurt/death particle analysis
             renderer.analyzeHurtDeath(frames);
 
+            // e3. Render diagnostics (block materials, entities, textured vs solid)
+            renderer.logRenderDiagnostics(frames.get(0), 0, jobId.toString(), logger);
+            if (triggerFrameIndex != 0) {
+                renderer.logRenderDiagnostics(frames.get(triggerFrameIndex), triggerFrameIndex, jobId.toString(), logger);
+            }
+
             // f. Render each frame
-            List<BufferedImage> images = new ArrayList<>(frames.size());
-            for (int i = 0; i < frames.size(); i++) {
+            int frameCount = frames.size();
+            logger.info("[{}] Frame loop starting, drawList size for frame 0: {}",
+                jobId, renderer.buildBlockDrawList(frames.get(0)).size());
+            logger.info("[{}] Rendering {} frames", jobId, frameCount);
+            List<BufferedImage> images = new ArrayList<>(frameCount);
+            int logEvery = frameCount > 20 ? 10 : (frameCount > 5 ? 5 : 1);
+            for (int i = 0; i < frameCount; i++) {
                 images.add(renderer.renderFrame(frames.get(i), i, frameContext));
+                if ((i + 1) % logEvery == 0 || i == frameCount - 1) {
+                    logger.info("[{}] Rendered frame {}/{}", jobId, i + 1, frameCount);
+                }
             }
 
             job.status = RenderJob.Status.ENCODING;
@@ -188,7 +214,12 @@ public final class TriggerHandler {
             }
 
             job.status = RenderJob.Status.DONE;
-            logger.info("[{}] status=DONE", jobId);
+            int fetched = (mcAssetFetcher != null) ? mcAssetFetcher.getDownloadCount() - assetCountBefore : 0;
+            if (fetched > 0) {
+                logger.info("[{}] status=DONE ({} new assets fetched)", jobId, fetched);
+            } else {
+                logger.info("[{}] status=DONE", jobId);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             logger.info("[{}] Job interrupted", jobId);

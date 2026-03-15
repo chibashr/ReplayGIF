@@ -29,11 +29,6 @@ public final class MojangAssetDownloader {
     private static final String VERSION_MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
     private static final String ASSET_BASE = "https://resources.download.minecraft.net/";
     private static final String USER_AGENT = "ReplayGif/1.0 (Minecraft server plugin)";
-    private static final List<String> ITEM_PREFIXES = List.of(
-            "minecraft/textures/item/",
-            "minecraft/textures/block/"
-    );
-
     private final JavaPlugin plugin;
     private final Path cacheDir;
     private final String assetsVersion;
@@ -70,12 +65,16 @@ public final class MojangAssetDownloader {
 
     private void doDownload() throws IOException, InterruptedException {
         Path itemsDir = cacheDir.resolve("items");
-        if (Files.exists(itemsDir) && hasCachedFiles(itemsDir)) {
+        Path entitiesDir = cacheDir.resolve("entities");
+        boolean itemsExist = Files.exists(itemsDir) && hasCachedFiles(itemsDir);
+        boolean entitiesExist = Files.exists(entitiesDir) && hasCachedFiles(entitiesDir);
+        if (itemsExist && entitiesExist) {
             plugin.getSLF4JLogger().info("Texture cache already populated, skipping Mojang download.");
             completed = true;
             return;
         }
         Files.createDirectories(itemsDir);
+        Files.createDirectories(entitiesDir);
 
         String versionUrl = fetchVersionUrl(assetsVersion);
         if (versionUrl == null) {
@@ -90,30 +89,33 @@ public final class MojangAssetDownloader {
             throw new IOException("Asset index has no objects");
         }
 
-        int count = 0;
+        int itemCount = 0;
+        int entityCount = 0;
         for (Map.Entry<String, com.google.gson.JsonElement> e : objects.entrySet()) {
             String path = e.getKey();
             if (!path.endsWith(".png")) continue;
-            boolean match = ITEM_PREFIXES.stream().anyMatch(path::startsWith);
-            if (!match) continue;
+            boolean isEntity = path.startsWith("minecraft/textures/entity/");
+            boolean isItemOrBlock = path.startsWith("minecraft/textures/item/") || path.startsWith("minecraft/textures/block/");
+            if (!isEntity && !isItemOrBlock) continue;
             JsonObject obj = e.getValue().getAsJsonObject();
             String hash = obj.has("hash") ? obj.get("hash").getAsString() : null;
             if (hash == null || hash.length() < 4) continue;
             String shortPath = path.substring(path.lastIndexOf('/') + 1, path.length() - 4);
-            String fileName = shortPath.toUpperCase(Locale.ROOT).replace("-", "_") + ".png";
-            Path target = itemsDir.resolve(fileName);
+            String fileName = (isEntity ? shortPath : shortPath.toUpperCase(Locale.ROOT)).replace("-", "_") + ".png";
+            Path target = isEntity ? entitiesDir.resolve(fileName) : itemsDir.resolve(fileName);
             if (Files.exists(target)) continue;
             String url = ASSET_BASE + hash.substring(0, 2) + "/" + hash;
             try {
                 if (downloadToFile(url, target)) {
-                    count++;
+                    if (isEntity) entityCount++;
+                    else itemCount++;
                 }
             } catch (Exception ex) {
                 plugin.getSLF4JLogger().debug("Failed to download {}: {}", path, ex.getMessage());
             }
         }
         completed = true;
-        plugin.getSLF4JLogger().info("Mojang asset download complete: {} item textures cached.", count);
+        plugin.getSLF4JLogger().info("Mojang asset download complete: {} item textures, {} entity textures cached.", itemCount, entityCount);
     }
 
     private boolean hasCachedFiles(Path dir) throws IOException {

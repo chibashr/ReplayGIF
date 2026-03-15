@@ -62,6 +62,7 @@ class TriggerHandlerTest {
                 mockGifEncoder,
                 mockRegistry,
                 mockConfig,
+                null,
                 LOG);
     }
 

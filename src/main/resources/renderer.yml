@@ -10,23 +10,38 @@ tile_height: 8
 # 32³ = 32768 blocks per frame. Larger volume = larger output image and more blocks to draw.
 volume_size: 32
 
-# Dollhouse cutout: blocks where (relX + relZ) > cut_offset are culled.
-# Exposes cave interiors; range 0–12. Default 4.
+# Dollhouse cutout: blocks where (relX + relZ) > cut_offset are culled — but NOT blocks at or
+# below ground_full_rel_y. This gives a full diamond-shaped ground with a cutout only above/sides
+# of the subject. cut_offset range 0–12. Default 4.
 cut_offset: 4
 
-# Path to Minecraft resource pack (folder or .zip) for item/block/entity textures.
-# Relative to plugin data folder. Default "packs" = plugins/ReplayGif/packs/.
-# Place .zip resource packs in that folder; the first one found is used. Or set a specific file (e.g. packs/Faithful.zip).
+# Blocks at relY <= this value are never culled; full ground layer visible. Default -1 = the block
+# beneath the subject's feet and all below. Only blocks above get the cut — creating a view of the
+# subject from above. Use 0 to include feet-level layer in the full ground.
+ground_full_rel_y: -1
+
+# Vertical view offset in blocks. 0 = center view on subject (player always in view). Positive = shift
+# view down so more ground shows below. Full ground (below player) is always rendered. Range 0–8.
+view_center_offset_y: 0
+
+# Path to Minecraft Java Edition resource pack (folder or .zip) for block and item textures.
+# Relative to plugin data folder. Default "packs" = plugins/ReplayGif/packs/. Use standard
+# Java Edition structure: assets/minecraft/textures/block/ and textures/item/ (works with
+# zips that have a root folder, e.g. MyPack/assets/...). First .zip in folder is used if
+# path is a directory. Example: packs/Faithful.zip or packs/
 resource_pack_path: "packs"
 
 # Path to Minecraft client jar for entity and item textures (optional).
 # Entity sprites (zombie, creeper, etc.) and item icons (HUD hotbar, dropped items) load
 # from assets/minecraft/textures/entity/ and textures/item/. If absent or invalid,
-# Mojang cache or bundled textures are used. Leave empty to try cache/bundled.
+# Mojang cache or bundled textures are used. Leave empty for platform default.
+# Windows paths: use single quotes to avoid YAML escape issues, e.g.
+#   client_jar_path: 'C:/Users/You/AppData/Roaming/.minecraft/versions/1.21.1/1.21.1.jar'
+# Or use forward slashes: C:/Users/.../1.21.1.jar
 client_jar_path: ""
 
-# When both resource_pack_path and client_jar_path are empty, textures are downloaded from
-# Mojang on first load and cached to plugins/ReplayGif/texture_cache/. Set version (e.g. 1.21).
+# Version for mcasset.cloud (default asset source when no client jar or resource pack).
+# Use "1.21", "1.20", "latest", or "snapshot". mcasset.cloud CDN serves versioned textures.
 download_assets_version: "1.21"
 
 # Whether to fetch and render player skins (face from skin sheet).
@@ -45,9 +60,17 @@ block_colors_path: "block_colors.json"
 #   gradlew extractBlockTextures -PclientJar=/path/to/1.21.jar
 block_textures_enabled: true
 
-# GIF background: "transparent", "white", "black", or hex (e.g. "#FF00FF"). Transparent uses magic
-# pink as chroma key so blocks are not accidentally made transparent.
-gif_background: transparent
+# Only draw block faces facing the viewer (top, left, right visibility). Set false to draw all
+# 3 faces per block; may help if rendering hangs with face culling enabled.
+block_face_culling: true
+
+# GIF background: "transparent", "white", "black", or hex (e.g. "#F5F5F5"). Default off-white avoids
+# magenta bleed when transparent is used in some viewers. Use "transparent" for chroma-key output.
+gif_background: "#F5F5F5"
+
+# GIF encoding quality/speed. Higher = faster encode, slightly lower color fidelity.
+# Range 1-30. Default 20. Use 10 for best quality (slower); 30 for fastest.
+gif_quality: 20
 
 # HUD appearance on the GIF. Requires restart to apply changes.
 hud_enabled: true

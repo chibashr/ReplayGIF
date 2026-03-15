@@ -204,9 +204,8 @@ public class SnapshotScheduler implements Runnable {
         String bootsItem = ItemSerializer.serialize(inv.getBoots());
 
         List<String> hotbarItems = new ArrayList<>(9);
-        ItemStack[] contents = inv.getStorageContents();
         for (int i = 0; i < 9; i++) {
-            hotbarItems.add(ItemSerializer.serialize(i < contents.length ? contents[i] : null));
+            hotbarItems.add(ItemSerializer.serialize(inv.getItem(i)));
         }
         int heldItemSlot = inv.getHeldItemSlot();
 

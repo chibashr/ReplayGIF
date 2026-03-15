@@ -48,6 +48,8 @@ public class AnimatedGifEncoder {
     protected boolean firstFrame = true;
     protected boolean sizeSet = false;
     protected int sample = 10;
+    /** Pre-built palette (768 bytes) for first frame; when set, skips NeuQuant to preserve colors from multiple frames. */
+    protected byte[] initialPalette = null;
 
     public void setDelay(int ms) {
         delay = Math.round(ms / 10.0f);
@@ -78,6 +80,11 @@ public class AnimatedGifEncoder {
         background = c;
     }
 
+    /** Sets a pre-built 256-color palette (768 bytes RGB). When set, the first frame uses it instead of NeuQuant. */
+    public void setInitialPalette(byte[] palette) {
+        initialPalette = (palette != null && palette.length >= 768) ? palette : null;
+    }
+
     public boolean addFrame(BufferedImage im) {
         if ((im == null) || !started) {
             return false;
@@ -89,7 +96,26 @@ public class AnimatedGifEncoder {
             }
             image = im;
             getImagePixels();
-            analyzePixels();
+            if (firstFrame) {
+                if (initialPalette != null) {
+                    colorTab = initialPalette;
+                    int nPix = pixels.length / 3;
+                    indexedPixels = new byte[nPix];
+                    for (int i = 0; i < usedEntry.length; i++) usedEntry[i] = false;
+                    mapPixelsToPalette(nPix);
+                    pixels = null;
+                    colorDepth = 8;
+                    palSize = 7;
+                    if (transparent != null) {
+                        transIndex = transparentExactMatch ? findExact(transparent) : findClosest(transparent);
+                    }
+                    initialPalette = null;
+                } else {
+                    analyzePixels();
+                }
+            } else {
+                mapToExistingPalette();
+            }
             if (firstFrame) {
                 writeLSD();
                 writePalette();
@@ -108,6 +134,20 @@ public class AnimatedGifEncoder {
             ok = false;
         }
         return ok;
+    }
+
+    /**
+     * Reuses the first frame's palette; maps current pixels to it. Fast path for frames 2+.
+     * Skips NeuQuant (neural color quantization) which is the main encoding bottleneck.
+     */
+    protected void mapToExistingPalette() {
+        if (colorTab == null) return;
+        int len = pixels.length;
+        int nPix = len / 3;
+        indexedPixels = new byte[nPix];
+        for (int i = 0; i < usedEntry.length; i++) usedEntry[i] = false;
+        mapPixelsToPalette(nPix);
+        pixels = null;
     }
 
     public boolean finish() {
@@ -195,21 +235,45 @@ public class AnimatedGifEncoder {
             colorTab[i + 2] = temp;
             usedEntry[i / 3] = false;
         }
-        int k = 0;
-        for (int i = 0; i < nPix; i++) {
-            int index =
-                    nq.map(pixels[k++] & 0xff,
-                            pixels[k++] & 0xff,
-                            pixels[k++] & 0xff);
-            usedEntry[index] = true;
-            indexedPixels[i] = (byte) index;
-        }
+        mapPixelsToPalette(nPix);
         pixels = null;
         colorDepth = 8;
         palSize = 7;
         if (transparent != null) {
             transIndex = transparentExactMatch ? findExact(transparent) : findClosest(transparent);
         }
+    }
+
+    /**
+     * Maps pixels to an existing palette (for frame 2+ when reusing first frame's palette).
+     * Much faster than full NeuQuant; use when frames share similar colors.
+     */
+    protected void mapPixelsToPalette(int nPix) {
+        int k = 0;
+        for (int i = 0; i < nPix; i++) {
+            int b = pixels[k++] & 0xff;
+            int g = pixels[k++] & 0xff;
+            int r = pixels[k++] & 0xff;
+            int index = findClosestInPalette(b, g, r);
+            usedEntry[index] = true;
+            indexedPixels[i] = (byte) index;
+        }
+    }
+
+    protected int findClosestInPalette(int b, int g, int r) {
+        int bestIndex = 0;
+        int bestDist = Integer.MAX_VALUE;
+        for (int i = 0; i < colorTab.length; i += 3) {
+            int db = b - (colorTab[i] & 0xff);
+            int dg = g - (colorTab[i + 1] & 0xff);
+            int dr = r - (colorTab[i + 2] & 0xff);
+            int d = db * db + dg * dg + dr * dr;
+            if (d < bestDist) {
+                bestDist = d;
+                bestIndex = i / 3;
+            }
+        }
+        return bestIndex;
     }
 
     protected int findClosest(Color c) {

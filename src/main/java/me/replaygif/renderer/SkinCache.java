@@ -208,25 +208,71 @@ public class SkinCache {
         return Optional.ofNullable(cached.body);
     }
 
-    /** Fallback when getFace returns empty; lazy-loaded from resources. */
+    /** Fallback when getFace returns empty; lazy-loaded from resources. Never returns invisible/transparent image. */
     public BufferedImage getPlaceholder() {
         if (placeholder == null) {
             synchronized (this) {
                 if (placeholder == null) {
                     try (InputStream is = plugin.getResource(PLACEHOLDER_RESOURCE)) {
                         if (is != null) {
-                            placeholder = ImageIO.read(is);
+                            BufferedImage loaded = ImageIO.read(is);
+                            if (loaded != null && loaded.getWidth() >= FACE_SIZE && loaded.getHeight() >= FACE_SIZE
+                                    && hasVisiblePixels(loaded) && !isMostlyBlack(loaded)) {
+                                placeholder = loaded;
+                            }
                         }
                     } catch (IOException e) {
                         plugin.getSLF4JLogger().warn("Could not load player placeholder image", e);
                     }
                     if (placeholder == null) {
-                        placeholder = new BufferedImage(FACE_SIZE, FACE_SIZE, BufferedImage.TYPE_INT_ARGB);
+                        placeholder = createPlaceholderFace();
                     }
                 }
             }
         }
         return placeholder;
+    }
+
+    /** Programmatic skin-tone face so placeholder is never invisible. */
+    private static BufferedImage createPlaceholderFace() {
+        BufferedImage img = new BufferedImage(FACE_SIZE, FACE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        try {
+            g.setColor(new java.awt.Color(0xC6, 0x85, 0x6B)); // default skin tone
+            g.fillRect(0, 0, FACE_SIZE, FACE_SIZE);
+        } finally {
+            g.dispose();
+        }
+        return img;
+    }
+
+    private static boolean hasVisiblePixels(BufferedImage img) {
+        if (img == null) return false;
+        for (int y = 0; y < img.getHeight(); y++) {
+            for (int x = 0; x < img.getWidth(); x++) {
+                if ((img.getRGB(x, y) >>> 24) > 32) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isMostlyBlack(BufferedImage img) {
+        if (img == null) return true;
+        int dark = 0;
+        int total = 0;
+        for (int y = 0; y < img.getHeight(); y++) {
+            for (int x = 0; x < img.getWidth(); x++) {
+                int rgb = img.getRGB(x, y);
+                if ((rgb >>> 24) > 32) {
+                    total++;
+                    int r = (rgb >> 16) & 0xFF;
+                    int g = (rgb >> 8) & 0xFF;
+                    int b = rgb & 0xFF;
+                    if (r < 40 && g < 40 && b < 40) dark++;
+                }
+            }
+        }
+        return total > 0 && dark * 10 >= total * 9;
     }
 
     /** Full-body fallback when getBody returns empty; generic humanoid shape. */

@@ -9,7 +9,10 @@ import org.slf4j.Logger;
 import java.io.File;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.Locale;
 
 /**
  * Loads and validates all config files (config.yml, renderer.yml, outputs.yml, triggers.yml).
@@ -20,6 +23,8 @@ public class ConfigManager {
 
     private final JavaPlugin plugin;
     private final Logger logger;
+    /** Tracks (fileLabel:path) already warned for missing/invalid; cleared on load() so reload warns again. */
+    private final Set<String> warnedKeys = ConcurrentHashMap.newKeySet();
 
     private FileConfiguration config;
     private FileConfiguration rendererConfig;
@@ -29,6 +34,11 @@ public class ConfigManager {
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.logger = plugin.getSLF4JLogger();
+    }
+
+    /** Logger for components that use ConfigManager (e.g. GifEncoder progress). */
+    public Logger getLogger() {
+        return logger;
     }
 
     /**
@@ -57,6 +67,7 @@ public class ConfigManager {
      * Apply defaults and log WARN for missing or invalid values. Never throws.
      */
     public void load() {
+        warnedKeys.clear();
         config = loadFile("config.yml");
         rendererConfig = loadFile("renderer.yml");
         outputsConfig = loadFile("outputs.yml");
@@ -74,27 +85,39 @@ public class ConfigManager {
             logger.warn("Config file {} not found; using defaults for all values.", name);
             return new YamlConfiguration();
         }
-        return YamlConfiguration.loadConfiguration(file);
+        try {
+            return YamlConfiguration.loadConfiguration(file);
+        } catch (Exception e) {
+            logger.error("Cannot load {}: {}. Using defaults for all values in this file.", name, e.getMessage());
+            return new YamlConfiguration();
+        }
     }
 
     // --- Helpers: typed read with WARN on missing/invalid, never throw ---
+
+    private void warnOnce(String fileLabel, String path, String reason, Object defaultVal) {
+        String key = fileLabel + ":" + path + ":" + reason;
+        if (warnedKeys.add(key)) {
+            logger.warn("{}: {} '{}', using default {}", fileLabel, reason, path, defaultVal);
+        }
+    }
 
     private int getInt(FileConfiguration c, String path, int defaultVal, int min, int max, String fileLabel) {
         if (c == null) {
             return defaultVal;
         }
         if (!c.contains(path)) {
-            logger.warn("{}: missing '{}', using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "missing", defaultVal);
             return defaultVal;
         }
         Object o = c.get(path);
         if (!(o instanceof Number)) {
-            logger.warn("{}: invalid '{}' (not a number), using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "invalid", defaultVal);
             return defaultVal;
         }
         int v = ((Number) o).intValue();
         if (min != max && (v < min || v > max)) {
-            logger.warn("{}: '{}' out of range (got {}, valid {}-{}), using default {}", fileLabel, path, v, min, max, defaultVal);
+            warnOnce(fileLabel, path, "range", defaultVal);
             return defaultVal;
         }
         return v;
@@ -109,12 +132,12 @@ public class ConfigManager {
             return defaultVal;
         }
         if (!c.contains(path)) {
-            logger.warn("{}: missing '{}', using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "missing", defaultVal);
             return defaultVal;
         }
         Object o = c.get(path);
         if (!(o instanceof Number)) {
-            logger.warn("{}: invalid '{}' (not a number), using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "invalid", defaultVal);
             return defaultVal;
         }
         return ((Number) o).doubleValue();
@@ -125,12 +148,12 @@ public class ConfigManager {
             return defaultVal;
         }
         if (!c.contains(path)) {
-            logger.warn("{}: missing '{}', using default '{}'", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "missing", defaultVal);
             return defaultVal;
         }
         Object o = c.get(path);
         if (o == null) {
-            logger.warn("{}: invalid '{}' (null), using default '{}'", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "invalid", defaultVal);
             return defaultVal;
         }
         return o.toString();
@@ -141,12 +164,12 @@ public class ConfigManager {
             return defaultVal;
         }
         if (!c.contains(path)) {
-            logger.warn("{}: missing '{}', using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "missing", defaultVal);
             return defaultVal;
         }
         Object o = c.get(path);
         if (!(o instanceof Boolean)) {
-            logger.warn("{}: invalid '{}' (not a boolean), using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "invalid", defaultVal);
             return defaultVal;
         }
         return (Boolean) o;
@@ -157,12 +180,12 @@ public class ConfigManager {
             return defaultVal;
         }
         if (!c.contains(path)) {
-            logger.warn("{}: missing '{}', using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "missing", defaultVal);
             return defaultVal;
         }
         Object o = c.get(path);
         if (!(o instanceof List)) {
-            logger.warn("{}: invalid '{}' (not a list), using default {}", fileLabel, path, defaultVal);
+            warnOnce(fileLabel, path, "invalid", defaultVal);
             return defaultVal;
         }
         List<?> list = (List<?>) o;
@@ -233,12 +256,46 @@ public class ConfigManager {
         return getInt(rendererConfig, "cut_offset", 4, 0, 12, RENDERER);
     }
 
+    /** Blocks at relY <= this are never culled; full ground. Only blocks above get the cut. Default -1. */
+    public int getGroundFullRelY() {
+        return getInt(rendererConfig, "ground_full_rel_y", -1, -16, 16, RENDERER);
+    }
+
+    public int getViewCenterOffsetY() {
+        return getInt(rendererConfig, "view_center_offset_y", 0, 0, 8, RENDERER);
+    }
+
     public String getResourcePackPath() {
         return getString(rendererConfig, "resource_pack_path", "packs", RENDERER);
     }
 
     public String getClientJarPath() {
-        return getString(rendererConfig, "client_jar_path", "", RENDERER);
+        String path = getString(rendererConfig, "client_jar_path", "", RENDERER);
+        if (path != null && path.isBlank()) {
+            return getDefaultClientJarPath();
+        }
+        return path;
+    }
+
+    /** True if the client jar path points to an existing file. Used to decide whether to run Mojang asset download. */
+    public boolean isClientJarPathValid() {
+        String path = getClientJarPath();
+        return path != null && !path.isBlank() && new File(path.trim()).isFile();
+    }
+
+    /** Platform-specific default path to Minecraft 1.21 client jar. Used when client_jar_path is empty. */
+    private static String getDefaultClientJarPath() {
+        String home = System.getProperty("user.home", ".");
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (os.contains("win")) {
+            String appData = System.getenv("APPDATA");
+            String base = (appData != null && !appData.isBlank()) ? appData : (home + "\\AppData\\Roaming");
+            return base + "\\.minecraft\\versions\\1.21\\1.21.jar";
+        }
+        if (os.contains("mac")) {
+            return home + "/Library/Application Support/minecraft/versions/1.21/1.21.jar";
+        }
+        return home + "/.minecraft/versions/1.21/1.21.jar";
     }
 
     /** Minecraft version for Mojang asset download (e.g. "1.21"). Used when no other texture source. */
@@ -262,9 +319,19 @@ public class ConfigManager {
         return getBoolean(rendererConfig, "block_textures_enabled", true, RENDERER);
     }
 
-    /** "transparent", "white", "black", or hex e.g. "#FF00FF". Default transparent. */
+    /** Whether to cull occluded block faces (only draw visible ones). False = draw all 3 faces. */
+    public boolean getBlockFaceCulling() {
+        return getBoolean(rendererConfig, "block_face_culling", true, RENDERER);
+    }
+
+    /** "transparent", "white", "black", or hex e.g. "#F5F5F5". Default off-white. */
     public String getGifBackground() {
-        return getString(rendererConfig, "gif_background", "transparent", RENDERER);
+        return getString(rendererConfig, "gif_background", "#F5F5F5", RENDERER);
+    }
+
+    /** GIF encoding quality/speed. Higher = faster (sample factor). 1–30, default 20. */
+    public int getGifQuality() {
+        return getInt(rendererConfig, "gif_quality", 20, 1, 30, RENDERER);
     }
 
     /** Whether to draw full HUD (hearts, armor, food, XP, hotbar). False = action bar and boss bars only. */
